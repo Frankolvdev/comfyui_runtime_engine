@@ -38,6 +38,8 @@ class RuntimeConfig:
     sam3_expected_model: Path
     sam3_link_mode: str
     sam3_replace_existing: bool
+    snapshot_provider: str
+    snapshot_state_path: Path
     json_events: bool
     event_log: Path | None
 
@@ -55,6 +57,7 @@ class RuntimeConfig:
         snapshot = raw.get("snapshot", {})
         residency = raw.get("residency", {})
         diagnostics = raw.get("diagnostics", {})
+        snapshot_lifecycle = raw.get("snapshot_lifecycle", {})
 
         comfyui_path = Path(str(runtime["comfyui_path"])).expanduser()
         comfyui_path = (
@@ -174,6 +177,8 @@ class RuntimeConfig:
             sam3_replace_existing=bool(
                 residency.get("sam3_replace_existing", False)
             ),
+            snapshot_provider=str(snapshot_lifecycle.get("provider", "modal")),
+            snapshot_state_path=(config_path.parent / str(snapshot_lifecycle.get("state_path", ".runtime/snapshot-state.json"))).resolve(),
             json_events=bool(diagnostics.get("json_events", True)),
             event_log=event_log,
         )
@@ -189,5 +194,7 @@ class RuntimeConfig:
             raise ConfigurationError(
                 "residency.sam3_link_mode must be auto, symlink, hardlink or copy"
             )
+        if self.snapshot_provider not in {"modal", "local-simulation"}:
+            raise ConfigurationError("snapshot_lifecycle.provider must be modal or local-simulation")
         for item in self.warmup_inputs:
             item.validate()

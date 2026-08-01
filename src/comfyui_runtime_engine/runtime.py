@@ -11,6 +11,7 @@ from .events import EventSink
 from .gpu import IsolatedGPUProbe
 from .residency import ResidencyManager
 from .warmup import AssetLinkManager, WarmupWorkflow
+from .snapshot import SnapshotLifecycle
 
 
 class RuntimeEngine:
@@ -117,11 +118,41 @@ class RuntimeEngine:
             hold_seconds=hold_seconds,
             iterations=iterations,
             asset_links={"sam3": asset_result.to_dict()},
+            snapshot_lifecycle=SnapshotLifecycle(
+                self.config.snapshot_state_path,
+                provider=self.config.snapshot_provider,
+            ) if self.config.snapshot_enabled else None,
         )
         report["gpu_probe"] = gpu
         report["resident_plan"] = resident_plan
         report["resident_models_only"] = list(self.config.resident_models)
         return report
+
+
+    def snapshot_inspect(self) -> dict[str, object]:
+        lifecycle = SnapshotLifecycle(
+            self.config.snapshot_state_path,
+            provider=self.config.snapshot_provider,
+        )
+        state = lifecycle.store.read()
+        return {
+            "state_path": str(lifecycle.store.path),
+            "state": state,
+            "success": bool(state.get("snapshot_ready")),
+        }
+
+    def snapshot_simulate(self, *, hold_seconds: float = 10.0) -> dict[str, object]:
+        if not self.config.snapshot_enabled:
+            raise RuntimeEngineError("snapshot.enabled must be true for snapshot simulation")
+        report = self.warmup_probe(hold_seconds=hold_seconds, iterations=1)
+        state = report.get("snapshot_state")
+        return {
+            "mode": "local-simulation",
+            "warning": "This validates the in-process snapshot contract; it does not create a Modal GPU snapshot.",
+            "warmup": report,
+            "snapshot_state": state,
+            "success": bool(state and state.get("snapshot_ready")),
+        }
 
     def _residency_manager(self):
         return ResidencyManager(

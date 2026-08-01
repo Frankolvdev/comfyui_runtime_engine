@@ -19,7 +19,7 @@ ensure_workspace = true
 
 
 [snapshot]
-enabled = false
+enabled = true
 gpu_enabled = false
 
 resident_models = [
@@ -40,9 +40,16 @@ execution_reserve_gb = 8.0
 warmup_workflow = "warmup-workflow-api.json"
 warmup_timeout_seconds = 600
 
-sam3_model_source = "local (auto-download)"
+sam3_source_model = "C:/pinokio/api/comfy_3.git/app/models/sam3/sam3.pt"
+sam3_expected_model = "models/sam3/sam3.pt"
+sam3_link_mode = "auto"
+sam3_replace_existing = false
 
 warmup_inputs = [
   { source = "F:/PROYECTOS PERSONALES/TRYON/comfyui_runtime_engine/body.jpg", target = "30d09464-0d1d-4baf-8d84-4f2fb3fd0cbb.png" },
   { source = "F:/PROYECTOS PERSONALES/TRYON/comfyui_runtime_engine/face.png", target = "12f661a3367722ae211a2b282532e310.jpg" },
 ]
+
+[snapshot_lifecycle]
+provider = "local-simulation"
+state_path = ".runtime/snapshot-state.json"

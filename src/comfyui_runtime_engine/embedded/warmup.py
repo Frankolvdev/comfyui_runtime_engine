@@ -41,6 +41,7 @@ class EmbeddedWarmupRunner:
         hold_seconds: float,
         iterations: int,
         asset_links: dict[str, Any],
+        snapshot_lifecycle=None,
     ) -> dict[str, Any]:
         handle = self.bootstrap.bootstrap()
         loop = handle.loop
@@ -117,6 +118,16 @@ class EmbeddedWarmupRunner:
                 and residency_guard["protected_loaded_count"]
                 >= len(self.resident_paths)
             )
+            snapshot_state = None
+            if snapshot_lifecycle is not None:
+                last_run = runs[-1] if runs else {}
+                snapshot_state = snapshot_lifecycle.before_snapshot(
+                    residency_guard=residency_guard,
+                    vram=(last_run.get("vram_after") or {}),
+                    workflow=str(workflow.path),
+                    prompt_id=last_run.get("prompt_id"),
+                )
+
             report = {
                 "pid": os.getpid(),
                 "same_process": True,
@@ -140,6 +151,7 @@ class EmbeddedWarmupRunner:
                 "workflow_modified": False,
                 "asset_links": asset_links,
                 "residency_guard": residency_guard,
+                "snapshot_state": snapshot_state,
                 "elapsed_ms": int((time.monotonic() - started) * 1000),
                 "success": success,
             }

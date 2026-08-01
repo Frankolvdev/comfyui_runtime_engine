@@ -49,3 +49,9 @@ sam3_replace_existing = true
 [diagnostics]
 json_events = true
 event_log = ".runtime/events.jsonl"
+
+[snapshot_lifecycle]
+# Local tests use local-simulation. The Modal adapter will call the same
+# in-process hooks using provider = "modal".
+provider = "local-simulation"
+state_path = ".runtime/snapshot-state.json"

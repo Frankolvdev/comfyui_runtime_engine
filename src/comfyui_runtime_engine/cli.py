@@ -15,20 +15,22 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
 
     models = commands.add_parser("models")
-    model_commands = models.add_subparsers(
-        dest="models_command", required=True
-    )
+    model_commands = models.add_subparsers(dest="models_command", required=True)
     for name in ("scan", "plan", "verify"):
         model_commands.add_parser(name)
 
     warmup = commands.add_parser("warmup")
-    warmup_commands = warmup.add_subparsers(
-        dest="warmup_command", required=True
-    )
+    warmup_commands = warmup.add_subparsers(dest="warmup_command", required=True)
     warmup_commands.add_parser("verify")
     probe = warmup_commands.add_parser("probe")
     probe.add_argument("--hold-seconds", type=float, default=10.0)
     probe.add_argument("--iterations", type=int, default=2)
+
+    snapshot = commands.add_parser("snapshot")
+    snapshot_commands = snapshot.add_subparsers(dest="snapshot_command", required=True)
+    simulate = snapshot_commands.add_parser("simulate")
+    simulate.add_argument("--hold-seconds", type=float, default=10.0)
+    snapshot_commands.add_parser("inspect")
     return parser
 
 
@@ -42,16 +44,21 @@ def main(argv: list[str] | None = None) -> int:
                 "plan": engine.residency_plan,
                 "verify": engine.residency_verify,
             }[args.models_command]()
-        elif args.warmup_command == "verify":
-            report = engine.warmup_verify()
+        elif args.command == "warmup":
+            if args.warmup_command == "verify":
+                report = engine.warmup_verify()
+            else:
+                report = engine.warmup_probe(
+                    hold_seconds=args.hold_seconds,
+                    iterations=args.iterations,
+                )
+        elif args.snapshot_command == "simulate":
+            report = engine.snapshot_simulate(hold_seconds=args.hold_seconds)
         else:
-            report = engine.warmup_probe(
-                hold_seconds=args.hold_seconds,
-                iterations=args.iterations,
-            )
+            report = engine.snapshot_inspect()
         print(json.dumps(report, indent=2, ensure_ascii=False))
         return 0 if bool(report.get("success", True)) else 1
-    except (RuntimeEngineError, OSError, ValueError, KeyError) as exc:
+    except (RuntimeEngineError, OSError, ValueError, KeyError, RuntimeError) as exc:
         print(f"comfy-runtime error: {exc}", file=sys.stderr)
         return 1
 
