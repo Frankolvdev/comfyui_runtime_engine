@@ -40,6 +40,7 @@ class RuntimeConfig:
     sam3_replace_existing: bool
     snapshot_provider: str
     snapshot_state_path: Path
+    snapshot_audit_path: Path
     json_events: bool
     event_log: Path | None
 
@@ -101,11 +102,8 @@ class RuntimeConfig:
                 WarmupInput(source=source, target=str(item.get("target", "")).strip())
             )
 
-        first_root = (
-            model_roots[0] if model_roots else comfyui_path / "models"
-        )
+        first_root = model_roots[0] if model_roots else comfyui_path / "models"
         source_value = residency.get("sam3_source_model")
-        sam3_source = None
         if source_value:
             sam3_source = Path(str(source_value)).expanduser()
             sam3_source = (
@@ -135,6 +133,18 @@ class RuntimeConfig:
         if not event_log.is_absolute():
             event_log = (config_path.parent / event_log).resolve()
 
+        state_path = Path(
+            str(snapshot_lifecycle.get("state_path", ".runtime/snapshot-state.json"))
+        ).expanduser()
+        if not state_path.is_absolute():
+            state_path = (config_path.parent / state_path).resolve()
+
+        audit_path = Path(
+            str(snapshot_lifecycle.get("audit_path", ".runtime/snapshot-audit.json"))
+        ).expanduser()
+        if not audit_path.is_absolute():
+            audit_path = (config_path.parent / audit_path).resolve()
+
         config = cls(
             config_path=config_path,
             mode=str(runtime.get("mode", "embedded-simulation")),
@@ -142,9 +152,7 @@ class RuntimeConfig:
             python_executable=str(runtime.get("python_executable", sys.executable)),
             host=str(runtime.get("host", "127.0.0.1")),
             port=int(runtime.get("port", 8188)),
-            startup_timeout_seconds=float(
-                runtime.get("startup_timeout_seconds", 120)
-            ),
+            startup_timeout_seconds=float(runtime.get("startup_timeout_seconds", 120)),
             strict_version=bool(runtime.get("strict_version", True)),
             supported_versions=tuple(
                 map(str, runtime.get("supported_versions", ["0.15"]))
@@ -178,7 +186,8 @@ class RuntimeConfig:
                 residency.get("sam3_replace_existing", False)
             ),
             snapshot_provider=str(snapshot_lifecycle.get("provider", "modal")),
-            snapshot_state_path=(config_path.parent / str(snapshot_lifecycle.get("state_path", ".runtime/snapshot-state.json"))).resolve(),
+            snapshot_state_path=state_path,
+            snapshot_audit_path=audit_path,
             json_events=bool(diagnostics.get("json_events", True)),
             event_log=event_log,
         )
@@ -195,6 +204,8 @@ class RuntimeConfig:
                 "residency.sam3_link_mode must be auto, symlink, hardlink or copy"
             )
         if self.snapshot_provider not in {"modal", "local-simulation"}:
-            raise ConfigurationError("snapshot_lifecycle.provider must be modal or local-simulation")
+            raise ConfigurationError(
+                "snapshot_lifecycle.provider must be modal or local-simulation"
+            )
         for item in self.warmup_inputs:
             item.validate()

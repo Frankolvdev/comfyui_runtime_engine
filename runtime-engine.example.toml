@@ -17,7 +17,7 @@ shutdown_grace_seconds = 2.0
 ensure_workspace = true
 
 [snapshot]
-enabled = false
+enabled = true
 gpu_enabled = false
 resident_models = [
   "diffusion_models/realDream_klein9BV1.safetensors",
@@ -37,21 +37,16 @@ warmup_inputs = [
   { source = "F:/PROYECTOS PERSONALES/TRYON/comfyui_runtime_engine/face.png", target = "12f661a3367722ae211a2b282532e310.jpg" },
 ]
 
-# The workflow remains untouched with model_source = "sam3.pt".
 sam3_source_model = "C:/pinokio/api/comfy_3.git/app/models/sam3/sam3.pt"
 sam3_expected_model = "models/sam3/sam3.pt"
 sam3_link_mode = "auto"
+sam3_replace_existing = false
 
-# Set true once to replace the duplicate file downloaded by the previous test.
-# After the link exists, it can be returned to false.
-sam3_replace_existing = true
+[snapshot_lifecycle]
+provider = "local-simulation"
+state_path = ".runtime/snapshot-state.json"
+audit_path = ".runtime/snapshot-audit.json"
 
 [diagnostics]
 json_events = true
 event_log = ".runtime/events.jsonl"
-
-[snapshot_lifecycle]
-# Local tests use local-simulation. The Modal adapter will call the same
-# in-process hooks using provider = "modal".
-provider = "local-simulation"
-state_path = ".runtime/snapshot-state.json"

@@ -11,6 +11,7 @@ import uuid
 from typing import Any
 
 from ..errors import RuntimeEngineError
+from ..snapshot import SnapshotCompatibilityAudit
 from ..warmup import (
     ComfyModelPathRegistrar,
     SelectiveResidencyGuard,
@@ -42,6 +43,9 @@ class EmbeddedWarmupRunner:
         iterations: int,
         asset_links: dict[str, Any],
         snapshot_lifecycle=None,
+        snapshot_audit: SnapshotCompatibilityAudit | None = None,
+        persist_after_ready: bool = False,
+        persistent_ready_callback=None,
     ) -> dict[str, Any]:
         handle = self.bootstrap.bootstrap()
         loop = handle.loop
@@ -113,19 +117,36 @@ class EmbeddedWarmupRunner:
                     loop.run_until_complete(asyncio.sleep(0.05))
 
             residency_guard = guard.report()
-            success = (
-                all(run["history_status"] == "success" for run in runs)
-                and residency_guard["protected_loaded_count"]
-                >= len(self.resident_paths)
-            )
             snapshot_state = None
             if snapshot_lifecycle is not None:
                 last_run = runs[-1] if runs else {}
                 snapshot_state = snapshot_lifecycle.before_snapshot(
                     residency_guard=residency_guard,
-                    vram=(last_run.get("vram_after") or {}),
+                    vram=last_run.get("vram_after", {}),
                     workflow=str(workflow.path),
                     prompt_id=last_run.get("prompt_id"),
+                )
+
+            snapshot_audit_report = None
+            if snapshot_audit is not None:
+                snapshot_audit_report = snapshot_audit.run(
+                    loop=loop,
+                    prompt_server=handle.prompt_server,
+                    prompt_queue=handle.prompt_queue,
+                    residency_guard=residency_guard,
+                    snapshot_state=snapshot_state,
+                    model_paths=model_paths,
+                )
+
+            success = (
+                all(run["history_status"] == "success" for run in runs)
+                and residency_guard["protected_loaded_count"]
+                >= len(self.resident_paths)
+            )
+            if snapshot_audit_report is not None:
+                success = (
+                    success
+                    and snapshot_audit_report["summary"]["snapshot_compatible"]
                 )
 
             report = {
@@ -152,10 +173,29 @@ class EmbeddedWarmupRunner:
                 "asset_links": asset_links,
                 "residency_guard": residency_guard,
                 "snapshot_state": snapshot_state,
+                "snapshot_audit": snapshot_audit_report,
                 "elapsed_ms": int((time.monotonic() - started) * 1000),
                 "success": success,
             }
             self.bootstrap._events.emit("warmup.completed", **report)
+            if persistent_ready_callback is not None:
+                persistent_ready_callback(report)
+            if persist_after_ready:
+                stop_requested = False
+
+                def request_stop(_signum, _frame):
+                    nonlocal stop_requested
+                    stop_requested = True
+
+                import signal
+                previous_sigterm = signal.signal(signal.SIGTERM, request_stop)
+                previous_sigint = signal.signal(signal.SIGINT, request_stop)
+                try:
+                    while not stop_requested:
+                        loop.run_until_complete(asyncio.sleep(0.25))
+                finally:
+                    signal.signal(signal.SIGTERM, previous_sigterm)
+                    signal.signal(signal.SIGINT, previous_sigint)
             return report
         finally:
             guard.restore()

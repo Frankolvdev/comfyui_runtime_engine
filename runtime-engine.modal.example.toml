@@ -1,0 +1,47 @@
+[runtime]
+mode = "embedded"
+comfyui_path = "/app/ComfyUI"
+host = "127.0.0.1"
+port = 8000
+startup_timeout_seconds = 900
+strict_version = true
+supported_versions = ["0.15"]
+
+[embedded]
+allow_simulation_only = false
+extra_args = ["--disable-api-nodes"]
+shutdown_grace_seconds = 5.0
+ensure_workspace = true
+
+[snapshot]
+enabled = true
+gpu_enabled = true
+resident_models = [
+  "diffusion_models/realDream_klein9BV1.safetensors",
+]
+
+[residency]
+model_roots = ["/models"]
+strict = true
+execution_reserve_gb = 8.0
+warmup_workflow = "/app/runtime/warmup-workflow-api.json"
+warmup_timeout_seconds = 900
+
+warmup_inputs = [
+  { source = "/app/runtime/warmup/body.jpg", target = "30d09464-0d1d-4baf-8d84-4f2fb3fd0cbb.png" },
+  { source = "/app/runtime/warmup/face.jpg", target = "12f661a3367722ae211a2b282532e310.jpg" },
+]
+
+sam3_source_model = "/models/sam3/sam3.pt"
+sam3_expected_model = "models/sam3/sam3.pt"
+sam3_link_mode = "symlink"
+sam3_replace_existing = false
+
+[snapshot_lifecycle]
+provider = "modal"
+state_path = "/tmp/comfy-runtime-snapshot-state.json"
+audit_path = "/tmp/comfy-runtime-snapshot-audit.json"
+
+[diagnostics]
+json_events = true
+event_log = "/tmp/comfy-runtime-events.jsonl"

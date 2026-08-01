@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from .adapters import select_adapter
@@ -10,8 +11,8 @@ from .errors import RuntimeEngineError
 from .events import EventSink
 from .gpu import IsolatedGPUProbe
 from .residency import ResidencyManager
+from .snapshot import SnapshotCompatibilityAudit, SnapshotLifecycle
 from .warmup import AssetLinkManager, WarmupWorkflow
-from .snapshot import SnapshotLifecycle
 
 
 class RuntimeEngine:
@@ -67,6 +68,7 @@ class RuntimeEngine:
         *,
         hold_seconds: float = 10.0,
         iterations: int = 2,
+        enable_snapshot_audit: bool = False,
     ) -> dict[str, object]:
         if iterations < 1 or iterations > 5:
             raise RuntimeEngineError("warmup iterations must be between 1 and 5")
@@ -107,6 +109,20 @@ class RuntimeEngine:
             for argument in self.config.embedded_extra_args
             if argument != "--cpu"
         )
+        snapshot_lifecycle = (
+            SnapshotLifecycle(
+                self.config.snapshot_state_path,
+                provider=self.config.snapshot_provider,
+            )
+            if self.config.snapshot_enabled
+            else None
+        )
+        snapshot_audit = (
+            SnapshotCompatibilityAudit(self.config.snapshot_audit_path)
+            if enable_snapshot_audit
+            else None
+        )
+
         report = EmbeddedWarmupRunner(
             self._embedded_bootstrap(extra_args=gpu_args),
             model_roots=self._effective_model_roots(),
@@ -118,16 +134,13 @@ class RuntimeEngine:
             hold_seconds=hold_seconds,
             iterations=iterations,
             asset_links={"sam3": asset_result.to_dict()},
-            snapshot_lifecycle=SnapshotLifecycle(
-                self.config.snapshot_state_path,
-                provider=self.config.snapshot_provider,
-            ) if self.config.snapshot_enabled else None,
+            snapshot_lifecycle=snapshot_lifecycle,
+            snapshot_audit=snapshot_audit,
         )
         report["gpu_probe"] = gpu
         report["resident_plan"] = resident_plan
         report["resident_models_only"] = list(self.config.resident_models)
         return report
-
 
     def snapshot_inspect(self) -> dict[str, object]:
         lifecycle = SnapshotLifecycle(
@@ -141,17 +154,55 @@ class RuntimeEngine:
             "success": bool(state.get("snapshot_ready")),
         }
 
-    def snapshot_simulate(self, *, hold_seconds: float = 10.0) -> dict[str, object]:
+    def snapshot_audit_inspect(self) -> dict[str, object]:
+        if not self.config.snapshot_audit_path.is_file():
+            raise RuntimeEngineError(
+                f"Snapshot audit not found: {self.config.snapshot_audit_path}"
+            )
+        audit = json.loads(
+            self.config.snapshot_audit_path.read_text(encoding="utf-8")
+        )
+        return {
+            "audit_path": str(self.config.snapshot_audit_path),
+            "audit": audit,
+            "success": bool(
+                audit.get("summary", {}).get("snapshot_compatible")
+            ),
+        }
+
+    def snapshot_simulate(
+        self,
+        *,
+        hold_seconds: float = 10.0,
+        audit: bool = False,
+    ) -> dict[str, object]:
         if not self.config.snapshot_enabled:
-            raise RuntimeEngineError("snapshot.enabled must be true for snapshot simulation")
-        report = self.warmup_probe(hold_seconds=hold_seconds, iterations=1)
+            raise RuntimeEngineError(
+                "snapshot.enabled must be true for snapshot simulation"
+            )
+        report = self.warmup_probe(
+            hold_seconds=hold_seconds,
+            iterations=1,
+            enable_snapshot_audit=audit,
+        )
         state = report.get("snapshot_state")
+        audit_report = report.get("snapshot_audit")
+        success = bool(state and state.get("snapshot_ready"))
+        if audit:
+            success = success and bool(
+                audit_report
+                and audit_report.get("summary", {}).get("snapshot_compatible")
+            )
         return {
             "mode": "local-simulation",
-            "warning": "This validates the in-process snapshot contract; it does not create a Modal GPU snapshot.",
+            "warning": (
+                "This validates the in-process snapshot contract and compatibility "
+                "audit; it does not create a Modal GPU snapshot."
+            ),
             "warmup": report,
             "snapshot_state": state,
-            "success": bool(state and state.get("snapshot_ready")),
+            "snapshot_audit": audit_report,
+            "success": success,
         }
 
     def _residency_manager(self):

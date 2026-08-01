@@ -53,3 +53,4 @@ warmup_inputs = [
 [snapshot_lifecycle]
 provider = "local-simulation"
 state_path = ".runtime/snapshot-state.json"
+audit_path = ".runtime/snapshot-audit.json"
