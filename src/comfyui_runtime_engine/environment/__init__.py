@@ -1,3 +1,3 @@
-from .manager import EnvironmentManager, EnvironmentReport
+from .manager import EnvironmentManager
 
-__all__ = ["EnvironmentManager", "EnvironmentReport"]
+__all__ = ["EnvironmentManager"]

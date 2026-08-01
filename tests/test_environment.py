@@ -14,5 +14,14 @@ def test_environment_discovers_core_and_custom_node_requirements(tmp_path: Path)
     assert discovered == [tmp_path / "requirements.txt", node / "requirements.txt"]
     report = manager.sync(dry_run=True)
     assert report.success is True
-    assert len(report.results) == 2
-    assert all(item.status == "dry-run" for item in report.results)
+    assert len(report.results) == 1
+    command = report.results[0].command
+    assert command.count("-r") == 2
+
+
+def test_environment_prepares_writable_workspace(tmp_path: Path) -> None:
+    manager = EnvironmentManager(tmp_path, EventSink(tmp_path / "events.jsonl"))
+    report = manager.ensure_workspace()
+    assert report["writable"] is True
+    for name in ("models", "input", "output", "temp", "user"):
+        assert (tmp_path / name).is_dir()

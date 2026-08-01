@@ -61,6 +61,12 @@ class RuntimeEngine:
     def environment_audit(self) -> dict[str, object]:
         return EnvironmentManager(self.config.comfyui_path, self.events).audit()
 
+    def environment_verify(self) -> dict[str, object]:
+        return EnvironmentManager(self.config.comfyui_path, self.events).verify()
+
+    def environment_prepare(self) -> dict[str, object]:
+        return EnvironmentManager(self.config.comfyui_path, self.events).ensure_workspace()
+
     def environment_sync(self, *, dry_run: bool = False, strict: bool = False) -> dict[str, object]:
         return EnvironmentManager(self.config.comfyui_path, self.events).sync(
             dry_run=dry_run,
@@ -83,6 +89,9 @@ class RuntimeEngine:
         return self._start_normal()
 
     def _embedded_bootstrap(self) -> EmbeddedBootstrap:
+        manager = EnvironmentManager(self.config.comfyui_path, self.events)
+        if self.config.ensure_workspace:
+            manager.ensure_workspace()
         return EmbeddedBootstrap(
             self.inspection,
             self.events,
@@ -90,6 +99,7 @@ class RuntimeEngine:
             port=self.config.port,
             startup_timeout_seconds=self.config.startup_timeout_seconds,
             extra_args=self.config.embedded_extra_args,
+            shutdown_grace_seconds=self.config.shutdown_grace_seconds,
         )
 
     def _start_normal(self) -> int:

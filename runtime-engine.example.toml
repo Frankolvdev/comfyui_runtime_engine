@@ -12,6 +12,8 @@ supported_versions = ["0.15"]
 extra_args = ["--disable-auto-launch"]
 
 [embedded]
+shutdown_grace_seconds = 2.0
+ensure_workspace = true
 # Validación local en CPU. En una etapa posterior se sustituirá por CUDA.
 allow_simulation_only = false
 extra_args = ["--cpu", "--disable-api-nodes"]

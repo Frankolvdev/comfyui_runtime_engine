@@ -42,6 +42,7 @@ class EmbeddedBootstrap:
         port: int,
         startup_timeout_seconds: int = 120,
         extra_args: Sequence[str] = (),
+        shutdown_grace_seconds: float = 2.0,
     ) -> None:
         self._inspection = inspection
         self._events = events
@@ -49,6 +50,7 @@ class EmbeddedBootstrap:
         self._port = port
         self._startup_timeout_seconds = max(1, startup_timeout_seconds)
         self._extra_args = tuple(extra_args)
+        self._shutdown_grace_seconds = max(0.0, shutdown_grace_seconds)
         self._handle: EmbeddedHandle | None = None
         self._context: object | None = None
 
@@ -199,6 +201,16 @@ class EmbeddedBootstrap:
                 except Exception as exc:
                     self._events.emit("embedded.cleanup.warning", error=repr(exc))
             if not handle.loop.is_closed():
+                # Give ComfyUI-Manager and other startup tasks a short chance to
+                # finish before cancellation. This prevents the recurring
+                # "cannot schedule new futures after shutdown" probe warning.
+                if self._shutdown_grace_seconds > 0:
+                    deadline = time.monotonic() + self._shutdown_grace_seconds
+                    while time.monotonic() < deadline:
+                        pending_now = [task for task in asyncio.all_tasks(handle.loop) if not task.done()]
+                        if not pending_now:
+                            break
+                        handle.loop.run_until_complete(asyncio.sleep(0.05))
                 pending = asyncio.all_tasks(handle.loop)
                 for task in pending:
                     task.cancel()

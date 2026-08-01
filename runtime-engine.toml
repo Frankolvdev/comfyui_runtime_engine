@@ -14,6 +14,8 @@ extra_args = ["--disable-auto-launch"]
 [embedded]
 allow_simulation_only = false
 extra_args = ["--cpu", "--disable-api-nodes"]
+shutdown_grace_seconds = 2.0
+ensure_workspace = true
 
 [snapshot]
 enabled = false

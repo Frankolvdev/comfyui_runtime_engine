@@ -23,6 +23,8 @@ class RuntimeConfig:
     normal_extra_args: tuple[str, ...] = ()
     allow_simulation_only: bool = False
     embedded_extra_args: tuple[str, ...] = ()
+    shutdown_grace_seconds: float = 2.0
+    ensure_workspace: bool = True
     snapshot_enabled: bool = False
     gpu_snapshot_enabled: bool = False
     resident_models: tuple[str, ...] = ()
@@ -78,6 +80,8 @@ class RuntimeConfig:
             normal_extra_args=tuple(str(item) for item in normal.get("extra_args", [])),
             allow_simulation_only=bool(embedded.get("allow_simulation_only", False)),
             embedded_extra_args=tuple(str(item) for item in embedded.get("extra_args", [])),
+            shutdown_grace_seconds=max(0.0, float(embedded.get("shutdown_grace_seconds", 2.0))),
+            ensure_workspace=bool(embedded.get("ensure_workspace", True)),
             snapshot_enabled=bool(snapshot.get("enabled", False)),
             gpu_snapshot_enabled=bool(snapshot.get("gpu_enabled", False)),
             resident_models=tuple(str(item) for item in snapshot.get("resident_models", [])),

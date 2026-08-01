@@ -22,6 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     env = commands.add_parser("env", help="Audit or synchronize ComfyUI requirements")
     env_commands = env.add_subparsers(dest="env_command", required=True)
     env_commands.add_parser("audit", help="List discovered core and custom-node requirements")
+    env_commands.add_parser("verify", help="Run pip check, import checks, and workspace audit")
+    env_commands.add_parser("prepare", help="Create writable ComfyUI workspace directories")
     sync = env_commands.add_parser("sync", help="Install discovered requirements into this Python environment")
     sync.add_argument("--dry-run", action="store_true")
     sync.add_argument("--strict", action="store_true", help="Stop on the first failed requirements file")
@@ -52,6 +54,14 @@ def main(argv: list[str] | None = None) -> int:
             if args.env_command == "audit":
                 print(json.dumps(engine.environment_audit(), indent=2, ensure_ascii=False))
                 return 0
+            if args.env_command == "verify":
+                report = engine.environment_verify()
+                print(json.dumps(report, indent=2, ensure_ascii=False))
+                return 0 if bool(report["success"]) else 1
+            if args.env_command == "prepare":
+                report = engine.environment_prepare()
+                print(json.dumps(report, indent=2, ensure_ascii=False))
+                return 0 if bool(report["writable"]) else 1
             report = engine.environment_sync(dry_run=args.dry_run, strict=args.strict)
             print(json.dumps(report, indent=2, ensure_ascii=False))
             return 0 if bool(report["success"]) else 1
