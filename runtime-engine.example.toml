@@ -12,8 +12,7 @@ supported_versions = ["0.15"]
 extra_args = ["--disable-auto-launch"]
 
 [embedded]
-# Para la primera prueba real local se recomienda --cpu: valida el mismo
-# proceso, PromptServer, cola, rutas y custom nodes sin inicializar CUDA.
+# Validación local en CPU. En una etapa posterior se sustituirá por CUDA.
 allow_simulation_only = false
 extra_args = ["--cpu", "--disable-api-nodes"]
 

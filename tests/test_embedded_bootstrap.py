@@ -14,6 +14,7 @@ def test_real_embedded_probe_stays_in_engine_process(tmp_path: Path) -> None:
         EventSink(tmp_path / "events.jsonl"),
         host="127.0.0.1",
         port=8188,
+        extra_args=("--cpu", "--disable-api-nodes"),
     )
     report = bootstrap.probe()
     assert report["same_process"] is True
@@ -21,3 +22,4 @@ def test_real_embedded_probe_stays_in_engine_process(tmp_path: Path) -> None:
     assert report["prompt_server"] == "FakePromptServer"
     assert report["prompt_queue"] == "FakeQueue"
     assert report["server_bound"] is False
+    assert report["comfyui_root"] == str(root.resolve())

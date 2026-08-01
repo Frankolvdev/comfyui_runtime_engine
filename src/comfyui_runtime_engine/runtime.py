@@ -6,6 +6,7 @@ import subprocess
 from .adapters import select_adapter
 from .config import RuntimeConfig
 from .embedded import EmbeddedBootstrap
+from .environment import EnvironmentManager
 from .errors import RuntimeEngineError
 from .events import EventSink
 from .simulation import EmbeddedSimulation
@@ -22,6 +23,15 @@ class RuntimeEngine:
         )
 
     def doctor(self) -> dict[str, object]:
+        try:
+            import torch
+            torch_version = torch.__version__
+            cuda_compiled = bool(getattr(torch.version, "cuda", None))
+            cuda_available = bool(torch.cuda.is_available())
+        except Exception:
+            torch_version = None
+            cuda_compiled = False
+            cuda_available = False
         report: dict[str, object] = {
             "root": str(self.inspection.root),
             "version": self.inspection.version,
@@ -32,6 +42,9 @@ class RuntimeEngine:
             "snapshot_enabled": self.config.snapshot_enabled,
             "gpu_snapshot_enabled": self.config.gpu_snapshot_enabled,
             "resident_models": list(self.config.resident_models),
+            "torch_version": torch_version,
+            "torch_cuda_compiled": cuda_compiled,
+            "torch_cuda_available": cuda_available,
         }
         self.events.emit("doctor.completed", **report)
         return report
@@ -41,6 +54,18 @@ class RuntimeEngine:
 
     def probe_embedded(self) -> dict[str, object]:
         return self._embedded_bootstrap().probe()
+
+    def probe_server(self, hold_seconds: float = 1.0) -> dict[str, object]:
+        return self._embedded_bootstrap().server_probe(hold_seconds=hold_seconds)
+
+    def environment_audit(self) -> dict[str, object]:
+        return EnvironmentManager(self.config.comfyui_path, self.events).audit()
+
+    def environment_sync(self, *, dry_run: bool = False, strict: bool = False) -> dict[str, object]:
+        return EnvironmentManager(self.config.comfyui_path, self.events).sync(
+            dry_run=dry_run,
+            strict=strict,
+        ).to_dict()
 
     def start(self, mode: str | None = None) -> int:
         selected_mode = (mode or self.config.mode).lower()
@@ -63,6 +88,7 @@ class RuntimeEngine:
             self.events,
             host=self.config.host,
             port=self.config.port,
+            startup_timeout_seconds=self.config.startup_timeout_seconds,
             extra_args=self.config.embedded_extra_args,
         )
 

@@ -12,8 +12,8 @@ supported_versions = ["0.15"]
 extra_args = ["--disable-auto-launch"]
 
 [embedded]
-# Primera etapa: simulación local verificable. No crea CUDA ni modifica ComfyUI.
-allow_simulation_only = true
+allow_simulation_only = false
+extra_args = ["--cpu", "--disable-api-nodes"]
 
 [snapshot]
 enabled = false

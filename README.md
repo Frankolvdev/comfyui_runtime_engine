@@ -56,3 +56,13 @@ comfy-runtime --config runtime-engine.toml start --mode embedded
 
 La configuración recomendada para esta etapa usa `--cpu`, por lo que valida la
 arquitectura embebida antes de introducir CUDA o snapshots.
+
+## MegaZIP 03: entorno y prueba HTTP local
+
+```powershell
+comfy-runtime --config runtime-engine.toml env audit
+comfy-runtime --config runtime-engine.toml env sync
+comfy-runtime --config runtime-engine.toml server-probe --hold-seconds 2
+```
+
+Consulta `README_MEGAZIP_03.md` para el flujo completo y la limpieza de archivos locales ya rastreados.
