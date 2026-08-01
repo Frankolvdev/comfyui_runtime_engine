@@ -9,6 +9,7 @@ from .embedded import EmbeddedBootstrap
 from .environment import EnvironmentManager
 from .errors import RuntimeEngineError
 from .events import EventSink
+from .gpu import GPUProbe
 from .simulation import EmbeddedSimulation
 
 
@@ -17,9 +18,7 @@ class RuntimeEngine:
         self.config = config
         self.events = EventSink(config.event_log if config.json_events else None)
         self.adapter, self.inspection = select_adapter(
-            config.comfyui_path,
-            config.supported_versions,
-            config.strict_version,
+            config.comfyui_path, config.supported_versions, config.strict_version
         )
 
     def doctor(self) -> dict[str, object]:
@@ -58,6 +57,9 @@ class RuntimeEngine:
     def probe_server(self, hold_seconds: float = 1.0) -> dict[str, object]:
         return self._embedded_bootstrap().server_probe(hold_seconds=hold_seconds)
 
+    def gpu_probe(self) -> dict[str, object]:
+        return GPUProbe(self.events).run()
+
     def environment_audit(self) -> dict[str, object]:
         return EnvironmentManager(self.config.comfyui_path, self.events).audit()
 
@@ -67,10 +69,12 @@ class RuntimeEngine:
     def environment_prepare(self) -> dict[str, object]:
         return EnvironmentManager(self.config.comfyui_path, self.events).ensure_workspace()
 
+    def environment_repair(self, *, dry_run: bool = False) -> dict[str, object]:
+        return EnvironmentManager(self.config.comfyui_path, self.events).repair(dry_run=dry_run)
+
     def environment_sync(self, *, dry_run: bool = False, strict: bool = False) -> dict[str, object]:
         return EnvironmentManager(self.config.comfyui_path, self.events).sync(
-            dry_run=dry_run,
-            strict=strict,
+            dry_run=dry_run, strict=strict
         ).to_dict()
 
     def start(self, mode: str | None = None) -> int:
@@ -93,10 +97,7 @@ class RuntimeEngine:
         if self.config.ensure_workspace:
             manager.ensure_workspace()
         return EmbeddedBootstrap(
-            self.inspection,
-            self.events,
-            host=self.config.host,
-            port=self.config.port,
+            self.inspection, self.events, host=self.config.host, port=self.config.port,
             startup_timeout_seconds=self.config.startup_timeout_seconds,
             extra_args=self.config.embedded_extra_args,
             shutdown_grace_seconds=self.config.shutdown_grace_seconds,
@@ -106,8 +107,7 @@ class RuntimeEngine:
         command = self.adapter.normal_command(
             root=self.config.comfyui_path,
             python_executable=self.config.python_executable,
-            host=self.config.host,
-            port=self.config.port,
+            host=self.config.host, port=self.config.port,
             extra_args=self.config.normal_extra_args,
         )
         self.events.emit("normal.starting", command=command, cwd=str(self.config.comfyui_path))

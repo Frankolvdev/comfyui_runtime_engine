@@ -5,7 +5,6 @@ import importlib
 from pathlib import Path
 import subprocess
 import sys
-from typing import Iterable
 
 from ..events import EventSink
 
@@ -48,12 +47,7 @@ class EnvironmentReport:
 
 
 class EnvironmentManager:
-    """Audits and synchronizes ComfyUI dependencies into the engine venv.
-
-    Requirements are resolved in one pip invocation. This avoids the previous
-    last-file-wins behavior where custom nodes repeatedly replaced NumPy,
-    Transformers, OpenCV, and related packages.
-    """
+    """Audits, synchronizes and repairs the shared ComfyUI engine environment."""
 
     _IMPORT_CHECKS = {
         "sqlalchemy": "sqlalchemy",
@@ -70,6 +64,19 @@ class EnvironmentManager:
         "numba": "numba",
     }
 
+    # Known-good compatibility repair for the local laboratory environment.
+    _REPAIR_INSTALL = (
+        "diffusers>=0.35.1,<0.36",
+        "huggingface_hub>=0.34,<2",
+        "opencv-contrib-python==4.11.0.86",
+    )
+    _OPENCV_VARIANTS = (
+        "opencv-python",
+        "opencv-python-headless",
+        "opencv-contrib-python",
+        "opencv-contrib-python-headless",
+    )
+
     def __init__(self, root: Path, events: EventSink) -> None:
         self.root = root.resolve()
         self.events = events
@@ -79,7 +86,6 @@ class EnvironmentManager:
         core = self.root / "requirements.txt"
         if core.is_file():
             candidates.append(core)
-
         custom_root = self.root / "custom_nodes"
         if custom_root.is_dir():
             discovered: set[Path] = set()
@@ -113,7 +119,6 @@ class EnvironmentManager:
         command = [sys.executable, "-m", "pip", "install"]
         for requirement_file in requirement_files:
             command.extend(["-r", str(requirement_file)])
-
         self.events.emit(
             "environment.sync.started",
             python_executable=sys.executable,
@@ -121,43 +126,25 @@ class EnvironmentManager:
             dry_run=dry_run,
             strategy="single-resolution",
         )
-
         if dry_run:
-            results.append(
-                RequirementResult(
-                    path="<combined>",
-                    return_code=0,
-                    command=command,
-                    status="dry-run",
-                )
-            )
+            results.append(RequirementResult("<combined>", 0, command, "dry-run"))
             pip_check = None
             import_checks: list[CheckResult] = []
             success = True
         else:
             completed = subprocess.run(command, cwd=self.root, check=False)
-            results.append(
-                RequirementResult(
-                    path="<combined>",
-                    return_code=completed.returncode,
-                    command=command,
-                    status="installed" if completed.returncode == 0 else "failed",
-                )
-            )
+            results.append(RequirementResult(
+                "<combined>", completed.returncode, command,
+                "installed" if completed.returncode == 0 else "failed",
+            ))
             pip_check = self.pip_check()
             import_checks = self.verify_imports()
             success = completed.returncode == 0 and pip_check.ok
             if strict:
                 success = success and all(item.ok for item in import_checks)
-
         report = EnvironmentReport(
-            python_executable=sys.executable,
-            comfyui_root=str(self.root),
-            requirement_files=[str(path) for path in requirement_files],
-            results=results,
-            pip_check=pip_check,
-            import_checks=import_checks,
-            success=success,
+            sys.executable, str(self.root), [str(path) for path in requirement_files],
+            results, pip_check, import_checks, success,
         )
         self.events.emit(
             "environment.sync.completed",
@@ -168,13 +155,56 @@ class EnvironmentManager:
         )
         return report
 
+    def repair(self, *, dry_run: bool = False) -> dict[str, object]:
+        """Repair the two conflicts observed in the local ComfyUI laboratory.
+
+        1. Old diffusers importing the removed huggingface_hub.cached_download.
+        2. A non-contrib OpenCV wheel shadowing cv2.ximgproc.guidedFilter.
+        """
+        uninstall = [sys.executable, "-m", "pip", "uninstall", "-y", *self._OPENCV_VARIANTS]
+        install = [sys.executable, "-m", "pip", "install", "--upgrade", *self._REPAIR_INSTALL]
+        commands = [uninstall, install]
+        self.events.emit("environment.repair.started", dry_run=dry_run, commands=commands)
+
+        return_codes: list[int] = []
+        if not dry_run:
+            for command in commands:
+                completed = subprocess.run(command, cwd=self.root, check=False)
+                return_codes.append(completed.returncode)
+        else:
+            return_codes = [0, 0]
+
+        pip_check = self.pip_check() if not dry_run else None
+        imports = self.verify_imports() if not dry_run else []
+        opencv_features = self.verify_opencv_features() if not dry_run else []
+        critical = {item.name: item.ok for item in imports}
+        success = (
+            all(code == 0 for code in return_codes)
+            and (pip_check.ok if pip_check else True)
+            and (critical.get("diffusers", True))
+            and all(item.ok for item in opencv_features)
+        )
+        report = {
+            "dry_run": dry_run,
+            "commands": commands,
+            "return_codes": return_codes,
+            "pip_check": asdict(pip_check) if pip_check else None,
+            "imports": [asdict(item) for item in imports],
+            "opencv_features": [asdict(item) for item in opencv_features],
+            "success": success,
+        }
+        self.events.emit("environment.repair.completed", **report)
+        return report
+
     def verify(self) -> dict[str, object]:
         pip_check = self.pip_check()
         imports = self.verify_imports()
+        opencv_features = self.verify_opencv_features()
         workspace = self._workspace_audit()
         report = {
             "pip_check": asdict(pip_check),
             "imports": [asdict(item) for item in imports],
+            "opencv_features": [asdict(item) for item in opencv_features],
             "workspace": workspace,
             "success": pip_check.ok and bool(workspace["writable"]),
         }
@@ -184,10 +214,7 @@ class EnvironmentManager:
     def pip_check(self) -> CheckResult:
         completed = subprocess.run(
             [sys.executable, "-m", "pip", "check"],
-            cwd=self.root,
-            check=False,
-            capture_output=True,
-            text=True,
+            cwd=self.root, check=False, capture_output=True, text=True,
         )
         detail = (completed.stdout or completed.stderr or "").strip()
         return CheckResult("pip-check", completed.returncode == 0, detail or "No broken requirements found.")
@@ -199,9 +226,22 @@ class EnvironmentManager:
                 module = importlib.import_module(module_name)
                 version = getattr(module, "__version__", None)
                 results.append(CheckResult(name, True, str(version or "imported")))
-            except Exception as exc:  # import failures are diagnostics, not engine crashes
+            except Exception as exc:
                 results.append(CheckResult(name, False, f"{type(exc).__name__}: {exc}"))
         return results
+
+    def verify_opencv_features(self) -> list[CheckResult]:
+        try:
+            cv2 = importlib.import_module("cv2")
+            ximgproc = getattr(cv2, "ximgproc", None)
+            guided_filter = getattr(ximgproc, "guidedFilter", None) if ximgproc is not None else None
+            return [CheckResult(
+                "opencv.ximgproc.guidedFilter",
+                callable(guided_filter),
+                "available" if callable(guided_filter) else "missing; install opencv-contrib-python",
+            )]
+        except Exception as exc:
+            return [CheckResult("opencv.ximgproc.guidedFilter", False, f"{type(exc).__name__}: {exc}")]
 
     def ensure_workspace(self) -> dict[str, object]:
         created: list[str] = []
@@ -220,11 +260,7 @@ class EnvironmentManager:
         for name in ("models", "input", "output", "temp", "user"):
             path = self.root / name
             checks[name] = path.is_dir() and self._can_write(path)
-        return {
-            "root": str(self.root),
-            "paths": checks,
-            "writable": all(checks.values()),
-        }
+        return {"root": str(self.root), "paths": checks, "writable": all(checks.values())}
 
     @staticmethod
     def _can_write(path: Path) -> bool:
