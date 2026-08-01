@@ -1,0 +1,27 @@
+[runtime]
+mode = "embedded-simulation"
+comfyui_path = "../comfyui-experimental"
+python_executable = "python"
+host = "127.0.0.1"
+port = 8188
+startup_timeout_seconds = 120
+strict_version = true
+supported_versions = ["0.15"]
+
+[normal]
+extra_args = ["--disable-auto-launch"]
+
+[embedded]
+# Para la primera prueba real local se recomienda --cpu: valida el mismo
+# proceso, PromptServer, cola, rutas y custom nodes sin inicializar CUDA.
+allow_simulation_only = false
+extra_args = ["--cpu", "--disable-api-nodes"]
+
+[snapshot]
+enabled = false
+gpu_enabled = false
+resident_models = []
+
+[diagnostics]
+json_events = true
+event_log = ".runtime/events.jsonl"

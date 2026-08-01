@@ -1,0 +1,25 @@
+[runtime]
+mode = "embedded-simulation"
+comfyui_path = "C:/Users/frank/OneDrive/Documentos/comfyui-frankestein"
+python_executable = "python"
+host = "127.0.0.1"
+port = 8188
+startup_timeout_seconds = 120
+strict_version = true
+supported_versions = ["0.15"]
+
+[normal]
+extra_args = ["--disable-auto-launch"]
+
+[embedded]
+# Primera etapa: simulación local verificable. No crea CUDA ni modifica ComfyUI.
+allow_simulation_only = true
+
+[snapshot]
+enabled = false
+gpu_enabled = false
+resident_models = []
+
+[diagnostics]
+json_events = true
+event_log = ".runtime/events.jsonl"
