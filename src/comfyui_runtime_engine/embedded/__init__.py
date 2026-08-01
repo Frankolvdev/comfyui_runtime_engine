@@ -1,3 +1,4 @@
-from .bootstrap import EmbeddedBootstrap, EmbeddedHandle
+from .bootstrap import EmbeddedBootstrap
+from .offline import local_probe_environment
 
-__all__ = ["EmbeddedBootstrap", "EmbeddedHandle"]
+__all__ = ["EmbeddedBootstrap", "local_probe_environment"]
