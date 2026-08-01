@@ -1,35 +1,60 @@
 from __future__ import annotations
-import argparse,json,sys
+
+import argparse
+import json
+import sys
+
 from .config import RuntimeConfig
-from .runtime import RuntimeEngine
 from .errors import RuntimeEngineError
+from .runtime import RuntimeEngine
 
-def parser():
-    p=argparse.ArgumentParser(prog="comfy-runtime"); p.add_argument("--config",default="runtime-engine.toml")
-    c=p.add_subparsers(dest="command",required=True)
-    c.add_parser("doctor"); c.add_parser("gpu-probe")
-    m=c.add_parser("models"); ms=m.add_subparsers(dest="models_command",required=True)
-    for x in ("scan","plan","verify"): ms.add_parser(x)
-    w=c.add_parser("warmup"); ws=w.add_subparsers(dest="warmup_command",required=True)
-    ws.add_parser("verify"); run=ws.add_parser("probe"); run.add_argument("--hold-seconds",type=float,default=5)
-    g=c.add_parser("gpu-server-probe"); g.add_argument("--hold-seconds",type=float,default=2)
-    rep=c.add_parser("gpu-server-probe-repeat"); rep.add_argument("--iterations",type=int,default=3); rep.add_argument("--hold-seconds",type=float,default=2)
-    return p
 
-def main(argv=None):
-    a=parser().parse_args(argv)
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="comfy-runtime")
+    parser.add_argument("--config", default="runtime-engine.toml")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    models = commands.add_parser("models")
+    model_commands = models.add_subparsers(
+        dest="models_command", required=True
+    )
+    for name in ("scan", "plan", "verify"):
+        model_commands.add_parser(name)
+
+    warmup = commands.add_parser("warmup")
+    warmup_commands = warmup.add_subparsers(
+        dest="warmup_command", required=True
+    )
+    warmup_commands.add_parser("verify")
+    probe = warmup_commands.add_parser("probe")
+    probe.add_argument("--hold-seconds", type=float, default=10.0)
+    probe.add_argument("--iterations", type=int, default=2)
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
     try:
-        e=RuntimeEngine(RuntimeConfig.from_toml(a.config))
-        if a.command=="doctor": r=e.doctor()
-        elif a.command=="gpu-probe": r=e.gpu_probe(True)
-        elif a.command=="models":
-            r={"scan":e.residency_scan,"plan":e.residency_plan,"verify":e.residency_verify}[a.models_command]()
-        elif a.command=="warmup":
-            r=e.warmup_verify() if a.warmup_command=="verify" else e.warmup_probe(a.hold_seconds)
-        elif a.command=="gpu-server-probe": r=e.probe_gpu_server(a.hold_seconds)
-        else: r=e.repeated_gpu_server_probe(a.iterations,a.hold_seconds)
-        print(json.dumps(r,indent=2,ensure_ascii=False))
-        return 0 if r.get("success",True) else 1
-    except (RuntimeEngineError,OSError,ValueError,KeyError) as exc:
-        print(f"comfy-runtime error: {exc}",file=sys.stderr); return 1
-if __name__=="__main__": raise SystemExit(main())
+        engine = RuntimeEngine(RuntimeConfig.from_toml(args.config))
+        if args.command == "models":
+            report = {
+                "scan": engine.residency_scan,
+                "plan": engine.residency_plan,
+                "verify": engine.residency_verify,
+            }[args.models_command]()
+        elif args.warmup_command == "verify":
+            report = engine.warmup_verify()
+        else:
+            report = engine.warmup_probe(
+                hold_seconds=args.hold_seconds,
+                iterations=args.iterations,
+            )
+        print(json.dumps(report, indent=2, ensure_ascii=False))
+        return 0 if bool(report.get("success", True)) else 1
+    except (RuntimeEngineError, OSError, ValueError, KeyError) as exc:
+        print(f"comfy-runtime error: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

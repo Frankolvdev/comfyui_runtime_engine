@@ -1,6 +1,6 @@
 [runtime]
 mode = "embedded-simulation"
-comfyui_path = "C:/path/to/comfyui-experimental"
+comfyui_path = "C:/Users/frank/OneDrive/Documentos/comfyui-frankestein"
 host = "127.0.0.1"
 port = 8188
 startup_timeout_seconds = 120
@@ -24,11 +24,27 @@ resident_models = [
 ]
 
 [residency]
-model_roots = ["C:/pinokio/api/comfy_3.git/app/models"]
+model_roots = [
+  "C:/pinokio/api/comfy_3.git/app/models",
+]
 strict = true
 execution_reserve_gb = 8.0
 warmup_workflow = "warmup-workflow-api.json"
 warmup_timeout_seconds = 600
+
+warmup_inputs = [
+  { source = "F:/PROYECTOS PERSONALES/TRYON/comfyui_runtime_engine/body.jpg", target = "30d09464-0d1d-4baf-8d84-4f2fb3fd0cbb.png" },
+  { source = "F:/PROYECTOS PERSONALES/TRYON/comfyui_runtime_engine/face.png", target = "12f661a3367722ae211a2b282532e310.jpg" },
+]
+
+# The workflow remains untouched with model_source = "sam3.pt".
+sam3_source_model = "C:/pinokio/api/comfy_3.git/app/models/sam3/sam3.pt"
+sam3_expected_model = "models/sam3/sam3.pt"
+sam3_link_mode = "auto"
+
+# Set true once to replace the duplicate file downloaded by the previous test.
+# After the link exists, it can be returned to false.
+sam3_replace_existing = true
 
 [diagnostics]
 json_events = true
