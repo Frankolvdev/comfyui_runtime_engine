@@ -17,11 +17,22 @@ extra_args = ["--cpu", "--disable-api-nodes"]
 shutdown_grace_seconds = 2.0
 ensure_workspace = true
 
+
 [snapshot]
 enabled = false
 gpu_enabled = false
-resident_models = []
+
+resident_models = [
+"diffusion_models/realDream_klein9BV1.safetensors",
+]
 
 [diagnostics]
 json_events = true
 event_log = ".runtime/events.jsonl"
+
+[residency]
+model_roots = [
+  "C:/pinokio/api/comfy_3.git/app/models",
+]
+strict = true
+execution_reserve_gb = 8.0

@@ -1,6 +1,6 @@
 [runtime]
 mode = "embedded-simulation"
-comfyui_path = "../comfyui-experimental"
+comfyui_path = "C:/path/to/comfyui-experimental"
 python_executable = "python"
 host = "127.0.0.1"
 port = 8188
@@ -12,16 +12,26 @@ supported_versions = ["0.15"]
 extra_args = ["--disable-auto-launch"]
 
 [embedded]
-shutdown_grace_seconds = 2.0
-ensure_workspace = true
-# Validación local en CPU. En una etapa posterior se sustituirá por CUDA.
 allow_simulation_only = false
 extra_args = ["--cpu", "--disable-api-nodes"]
+shutdown_grace_seconds = 2.0
+ensure_workspace = true
 
 [snapshot]
 enabled = false
 gpu_enabled = false
-resident_models = []
+
+# Exact relative paths are preferred. A unique filename is also accepted.
+resident_models = [
+  # "diffusion_models/my-heavy-model.safetensors",
+  # "text_encoders/my-text-encoder.safetensors",
+]
+
+[residency]
+# Empty means <comfyui_path>/models.
+model_roots = []
+strict = true
+execution_reserve_gb = 8.0
 
 [diagnostics]
 json_events = true

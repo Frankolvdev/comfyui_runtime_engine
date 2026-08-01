@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import sys
 import tomllib
 
 from .errors import ConfigurationError
@@ -26,6 +27,9 @@ class RuntimeConfig:
     snapshot_enabled: bool
     gpu_snapshot_enabled: bool
     resident_models: tuple[str, ...]
+    model_roots: tuple[Path, ...]
+    residency_strict: bool
+    execution_reserve_gb: float
     json_events: bool
     event_log: Path | None
 
@@ -41,6 +45,7 @@ class RuntimeConfig:
         normal = data.get("normal", {})
         embedded = data.get("embedded", {})
         snapshot = data.get("snapshot", {})
+        residency = data.get("residency", {})
         diagnostics = data.get("diagnostics", {})
 
         comfyui_path = Path(str(runtime.get("comfyui_path", ""))).expanduser()
@@ -48,6 +53,16 @@ class RuntimeConfig:
             comfyui_path = (config_path.parent / comfyui_path).resolve()
         else:
             comfyui_path = comfyui_path.resolve()
+
+        configured_roots = residency.get("model_roots", [])
+        model_roots: list[Path] = []
+        for raw_root in configured_roots:
+            root = Path(str(raw_root)).expanduser()
+            if not root.is_absolute():
+                root = (comfyui_path / root).resolve()
+            else:
+                root = root.resolve()
+            model_roots.append(root)
 
         event_log_value = diagnostics.get("event_log")
         event_log = None
@@ -60,19 +75,15 @@ class RuntimeConfig:
             config_path=config_path,
             mode=str(runtime.get("mode", "normal")),
             comfyui_path=comfyui_path,
-            python_executable=str(runtime.get("python_executable", "python")),
+            python_executable=str(runtime.get("python_executable", sys.executable)),
             host=str(runtime.get("host", "127.0.0.1")),
             port=int(runtime.get("port", 8188)),
-            startup_timeout_seconds=float(
-                runtime.get("startup_timeout_seconds", 120)
-            ),
+            startup_timeout_seconds=float(runtime.get("startup_timeout_seconds", 120)),
             strict_version=bool(runtime.get("strict_version", True)),
             supported_versions=tuple(
                 str(item) for item in runtime.get("supported_versions", ["0.15"])
             ),
-            normal_extra_args=tuple(
-                str(item) for item in normal.get("extra_args", [])
-            ),
+            normal_extra_args=tuple(str(item) for item in normal.get("extra_args", [])),
             embedded_extra_args=tuple(
                 str(item) for item in embedded.get("extra_args", [])
             ),
@@ -88,6 +99,9 @@ class RuntimeConfig:
             resident_models=tuple(
                 str(item) for item in snapshot.get("resident_models", [])
             ),
+            model_roots=tuple(model_roots),
+            residency_strict=bool(residency.get("strict", True)),
+            execution_reserve_gb=float(residency.get("execution_reserve_gb", 8.0)),
             json_events=bool(diagnostics.get("json_events", True)),
             event_log=event_log,
         )
@@ -107,6 +121,8 @@ class RuntimeConfig:
             raise ConfigurationError("startup_timeout_seconds must be positive")
         if self.shutdown_grace_seconds < 0:
             raise ConfigurationError("shutdown_grace_seconds cannot be negative")
+        if self.execution_reserve_gb < 0:
+            raise ConfigurationError("residency.execution_reserve_gb cannot be negative")
         if self.gpu_snapshot_enabled and not self.snapshot_enabled:
             raise ConfigurationError(
                 "snapshot.gpu_enabled requires snapshot.enabled=true"
