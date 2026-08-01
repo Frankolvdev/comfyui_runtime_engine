@@ -1,7 +1,6 @@
 [runtime]
 mode = "embedded-simulation"
 comfyui_path = "C:/path/to/comfyui-experimental"
-python_executable = "python"
 host = "127.0.0.1"
 port = 8188
 startup_timeout_seconds = 120
@@ -20,18 +19,16 @@ ensure_workspace = true
 [snapshot]
 enabled = false
 gpu_enabled = false
-
-# Exact relative paths are preferred. A unique filename is also accepted.
 resident_models = [
-  # "diffusion_models/my-heavy-model.safetensors",
-  # "text_encoders/my-text-encoder.safetensors",
+  "diffusion_models/realDream_klein9BV1.safetensors",
 ]
 
 [residency]
-# Empty means <comfyui_path>/models.
-model_roots = []
+model_roots = ["C:/pinokio/api/comfy_3.git/app/models"]
 strict = true
 execution_reserve_gb = 8.0
+warmup_workflow = "warmup-workflow-api.json"
+warmup_timeout_seconds = 600
 
 [diagnostics]
 json_events = true

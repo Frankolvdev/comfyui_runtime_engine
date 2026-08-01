@@ -1,0 +1,910 @@
+{
+  "21578": {
+    "inputs": {
+      "vae_name": "flux2-vae.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE"
+    }
+  },
+  "21585": {
+    "inputs": {
+      "image": "30d09464-0d1d-4baf-8d84-4f2fb3fd0cbb.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "21586": {
+    "inputs": {
+      "clip_name": "qwen_3_8b.safetensors",
+      "type": "flux2",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "21587": {
+    "inputs": {
+      "image": "12f661a3367722ae211a2b282532e310.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Load Image"
+    }
+  },
+  "21589": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "21584:20669:19073",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "Save Image"
+    }
+  },
+  "21584:19055": {
+    "inputs": {
+      "pixels": [
+        "21584:19076",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "21584:19067": {
+    "inputs": {
+      "image": [
+        "21587",
+        0
+      ]
+    },
+    "class_type": "FluxKontextImageScale",
+    "_meta": {
+      "title": "FluxKontextImageScale"
+    }
+  },
+  "21584:19069": {
+    "inputs": {
+      "ANY": [
+        "21584:19072",
+        0
+      ],
+      "IF_TRUE": [
+        "21584:19071",
+        0
+      ],
+      "IF_FALSE": [
+        "21584:19070",
+        0
+      ]
+    },
+    "class_type": "If ANY execute A else B",
+    "_meta": {
+      "title": "If"
+    }
+  },
+  "21584:19070": {
+    "inputs": {
+      "text": "\nhead_swap: start with Picture 1 as the base image, keeping its lighting, environment, background, clothes. remove the head and hair from Picture 1 completely and replace it with the head from Picture 2. ensure the head and body have correct anatomical proportions, and blend the skin tones, shadows, and lighting naturally so the final result appears as one coherent, realistic person. after remove all tattoos of body, remove tattoos"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "21584:19072": {
+    "inputs": {
+      "cmp": "a = b",
+      "a": [
+        "21584:21601",
+        0
+      ],
+      "b": [
+        "21584:19073",
+        0
+      ]
+    },
+    "class_type": "ImpactCompare",
+    "_meta": {
+      "title": "ImpactCompare"
+    }
+  },
+  "21584:19073": {
+    "inputs": {
+      "value": 0
+    },
+    "class_type": "Int",
+    "_meta": {
+      "title": "Int"
+    }
+  },
+  "21584:19075": {
+    "inputs": {
+      "confidence_threshold": 0.15,
+      "pipeline_mode": "all",
+      "detect_all": false,
+      "max_detections": 1,
+      "instances": false,
+      "crop_factor": 1,
+      "min_size": 1,
+      "fill_holes": true,
+      "text_prompt": "woman face",
+      "sam3_model": [
+        "21584:21531",
+        0
+      ],
+      "image": [
+        "21585",
+        0
+      ]
+    },
+    "class_type": "TBGSam3Segmentation",
+    "_meta": {
+      "title": "TBG SAM3 Segmentation"
+    }
+  },
+  "21584:19077": {
+    "inputs": {
+      "width": 896,
+      "height": 1168,
+      "upscale_method": "nearest-exact",
+      "keep_proportion": "crop",
+      "pad_color": "0, 0, 0",
+      "crop_position": "center",
+      "divisible_by": 2,
+      "device": "cpu",
+      "image": [
+        "21585",
+        0
+      ]
+    },
+    "class_type": "ImageResizeKJv2",
+    "_meta": {
+      "title": "Resize Image v2"
+    }
+  },
+  "21584:19082": {
+    "inputs": {
+      "shrink": 10,
+      "blur": 0,
+      "blur_type": "gaussian",
+      "mask": [
+        "21584:19075",
+        5
+      ]
+    },
+    "class_type": "INPAINT_ShrinkMask",
+    "_meta": {
+      "title": "Shrink Mask"
+    }
+  },
+  "21584:19064:76": {
+    "inputs": {
+      "conditioning": [
+        "21584:19062",
+        0
+      ],
+      "latent": [
+        "21584:19064:78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:19064:77": {
+    "inputs": {
+      "conditioning": [
+        "21584:19061",
+        0
+      ],
+      "latent": [
+        "21584:19064:78",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:19064:78": {
+    "inputs": {
+      "pixels": [
+        "21584:19067",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "21584:19076": {
+    "inputs": {
+      "upscale_method": "nearest-exact",
+      "megapixels": 1,
+      "resolution_steps": 90,
+      "image": [
+        "21584:19077",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "ImageScaleToTotalPixels"
+    }
+  },
+  "21584:20672": {
+    "inputs": {
+      "seed": -1
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (rgthree)"
+    }
+  },
+  "21584:19056": {
+    "inputs": {
+      "seed": 274793309628714
+    },
+    "class_type": "Seed (rgthree)",
+    "_meta": {
+      "title": "Seed (rgthree)"
+    }
+  },
+  "21584:21530": {
+    "inputs": {
+      "unet_name": "Flux2-Klein-9B-True-v2-bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "21584:19085": {
+    "inputs": {
+      "samples": [
+        "21584:19065",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "21584:21531": {
+    "inputs": {
+      "model_source": "sam3.pt",
+      "device": "cuda"
+    },
+    "class_type": "TBGSAM3ModelLoaderAdvanced",
+    "_meta": {
+      "title": "TBG SAM3 Model Loader and Downloader"
+    }
+  },
+  "21584:19080": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": true,
+        "lora": "Klein/bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors",
+        "strength": 0.85
+      },
+      "lora_2": {
+        "on": true,
+        "lora": "Klein/lenovo_flux_klein9b.safetensors",
+        "strength": 1
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "21584:21530",
+        0
+      ],
+      "clip": [
+        "21586",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "Power Lora Loader (rgthree)"
+    }
+  },
+  "21584:19057": {
+    "inputs": {
+      "text": [
+        "21584:19069",
+        0
+      ],
+      "clip": [
+        "21584:19080",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "21584:19062": {
+    "inputs": {
+      "conditioning": [
+        "21584:21600",
+        0
+      ],
+      "latent": [
+        "21584:19055",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:19061": {
+    "inputs": {
+      "conditioning": [
+        "21584:19057",
+        0
+      ],
+      "latent": [
+        "21584:19055",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:21600": {
+    "inputs": {
+      "conditioning": [
+        "21584:19057",
+        0
+      ]
+    },
+    "class_type": "ConditioningZeroOut",
+    "_meta": {
+      "title": "ConditioningZeroOut"
+    }
+  },
+  "21584:19065": {
+    "inputs": {
+      "seed": [
+        "21584:19056",
+        0
+      ],
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "21584:19080",
+        0
+      ],
+      "positive": [
+        "21584:19064:77",
+        0
+      ],
+      "negative": [
+        "21584:19064:76",
+        0
+      ],
+      "latent_image": [
+        "21584:19055",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "21584:20669:19053": {
+    "inputs": {
+      "conditioning": [
+        "21584:20669:19066",
+        0
+      ],
+      "latent": [
+        "21584:20669:19069",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:20669:19067": {
+    "inputs": {
+      "text": [
+        "21584:20669:19096",
+        0
+      ],
+      "clip": [
+        "21584:20669:21599",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode (Positive Prompt)"
+    }
+  },
+  "21584:20669:19070": {
+    "inputs": {
+      "pixels": [
+        "21584:20669:19078",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "21584:20669:19078": {
+    "inputs": {
+      "method": "lanczos",
+      "image": [
+        "21587",
+        0
+      ]
+    },
+    "class_type": "LayerUtility: FluxKontextImageScale",
+    "_meta": {
+      "title": "LayerUtility: Flux Kontext Image Scale"
+    }
+  },
+  "21584:20669:19084": {
+    "inputs": {
+      "x": 0,
+      "y": 0,
+      "offset_x": 0,
+      "offset_y": 0,
+      "destination": [
+        "21584:20669:19082",
+        0
+      ],
+      "source": [
+        "21584:19085",
+        0
+      ],
+      "mask": [
+        "21584:20669:19097",
+        0
+      ]
+    },
+    "class_type": "ImageComposite+",
+    "_meta": {
+      "title": "🔧 Image Composite"
+    }
+  },
+  "21584:20669:19092": {
+    "inputs": {
+      "conditioning": [
+        "21584:20669:19067",
+        0
+      ],
+      "latent": [
+        "21584:20669:19069",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:20669:19095": {
+    "inputs": {
+      "text": "keep same long hair length only change hair color, hidden face"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "21584:20669:19096": {
+    "inputs": {
+      "ANY": [
+        "21584:20669:19099",
+        0
+      ],
+      "IF_TRUE": [
+        "21584:20669:19095",
+        0
+      ],
+      "IF_FALSE": [
+        "21584:20669:19068",
+        0
+      ]
+    },
+    "class_type": "If ANY execute A else B",
+    "_meta": {
+      "title": "If"
+    }
+  },
+  "21584:20669:19097": {
+    "inputs": {
+      "mask": [
+        "21584:20669:19098",
+        5
+      ]
+    },
+    "class_type": "InvertMask",
+    "_meta": {
+      "title": "InvertMask"
+    }
+  },
+  "21584:20669:19074": {
+    "inputs": {
+      "samples": [
+        "21584:20669:19071",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode"
+    }
+  },
+  "21584:20669:19068": {
+    "inputs": {
+      "text": "blue eyes, same woman only replace face, keep same long hair length only change de color of hair"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "21584:20669:19082": {
+    "inputs": {
+      "seed": 496254779222953,
+      "strength": 0.15,
+      "image": [
+        "21584:19085",
+        0
+      ]
+    },
+    "class_type": "ImageAddNoise",
+    "_meta": {
+      "title": "ImageAddNoise"
+    }
+  },
+  "21584:20669:19091": {
+    "inputs": {
+      "model_source": "sam3.pt",
+      "device": "cuda"
+    },
+    "class_type": "TBGSAM3ModelLoaderAdvanced",
+    "_meta": {
+      "title": "TBG SAM3 Model Loader and Downloader"
+    }
+  },
+  "21584:20669:19054": {
+    "inputs": {
+      "conditioning": [
+        "21584:20669:19092",
+        0
+      ],
+      "latent": [
+        "21584:20669:19070",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:20669:19055": {
+    "inputs": {
+      "conditioning": [
+        "21584:20669:19053",
+        0
+      ],
+      "latent": [
+        "21584:20669:19070",
+        0
+      ]
+    },
+    "class_type": "ReferenceLatent",
+    "_meta": {
+      "title": "ReferenceLatent"
+    }
+  },
+  "21584:20669:19069": {
+    "inputs": {
+      "pixels": [
+        "21584:20669:19083",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ]
+    },
+    "class_type": "VAEEncode",
+    "_meta": {
+      "title": "VAE Encode"
+    }
+  },
+  "21584:20669:19083": {
+    "inputs": {
+      "upscale_method": "bilinear",
+      "megapixels": 2,
+      "resolution_steps": 1,
+      "image": [
+        "21584:20669:19084",
+        0
+      ]
+    },
+    "class_type": "ImageScaleToTotalPixels",
+    "_meta": {
+      "title": "ImageScaleToTotalPixels"
+    }
+  },
+  "21584:20669:19098": {
+    "inputs": {
+      "confidence_threshold": 0.18,
+      "pipeline_mode": "all",
+      "detect_all": false,
+      "max_detections": 1,
+      "instances": false,
+      "crop_factor": 1.5,
+      "min_size": 16,
+      "fill_holes": false,
+      "text_prompt": "face",
+      "sam3_model": [
+        "21584:20669:19091",
+        0
+      ],
+      "image": [
+        "21584:19085",
+        0
+      ]
+    },
+    "class_type": "TBGSam3Segmentation",
+    "_meta": {
+      "title": "TBG SAM3 Segmentation"
+    }
+  },
+  "21584:20669:20675": {
+    "inputs": {
+      "expand": 20,
+      "tapered_corners": true,
+      "mask": [
+        "21584:20669:19098",
+        5
+      ]
+    },
+    "class_type": "GrowMask",
+    "_meta": {
+      "title": "Grow Mask"
+    }
+  },
+  "21584:20669:20674": {
+    "inputs": {
+      "noise_mask": true,
+      "positive": [
+        "21584:20669:19054",
+        0
+      ],
+      "negative": [
+        "21584:20669:19055",
+        0
+      ],
+      "vae": [
+        "21578",
+        0
+      ],
+      "pixels": [
+        "21584:20669:19083",
+        0
+      ],
+      "mask": [
+        "21584:20669:20675",
+        0
+      ]
+    },
+    "class_type": "InpaintModelConditioning",
+    "_meta": {
+      "title": "InpaintModelConditioning"
+    }
+  },
+  "21584:20669:19066": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "21584:20669:21599",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP Text Encode ( Negative Prompt)"
+    }
+  },
+  "21584:20669:19099": {
+    "inputs": {
+      "mask": [
+        "21584:20669:19098",
+        5
+      ]
+    },
+    "class_type": "easy isMaskEmpty",
+    "_meta": {
+      "title": "Is Mask Empty"
+    }
+  },
+  "21584:20669:19071": {
+    "inputs": {
+      "seed": [
+        "21584:20672",
+        0
+      ],
+      "steps": 4,
+      "cfg": 1,
+      "sampler_name": "euler_cfg_pp",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "21584:20669:21599",
+        0
+      ],
+      "positive": [
+        "21584:20669:20674",
+        0
+      ],
+      "negative": [
+        "21584:20669:20674",
+        1
+      ],
+      "latent_image": [
+        "21584:20669:20674",
+        2
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "21584:20669:21599": {
+    "inputs": {
+      "PowerLoraLoaderHeaderWidget": {
+        "type": "PowerLoraLoaderHeaderWidget"
+      },
+      "lora_1": {
+        "on": true,
+        "lora": "Klein/bfs_head_v1_flux-klein_9b_step3500_rank128.safetensors",
+        "strength": 1
+      },
+      "lora_2": {
+        "on": true,
+        "lora": "Klein/lenovo_flux_klein9b.safetensors",
+        "strength": 1
+      },
+      "lora_3": {
+        "on": true,
+        "lora": "Klein/f2k_consis.safetensors",
+        "strength": 1
+      },
+      "lora_4": {
+        "on": true,
+        "lora": "Klein/klein-9b_realism_slider_v2.safetensors",
+        "strength": 1
+      },
+      "➕ Add Lora": "",
+      "model": [
+        "21584:20669:19087",
+        0
+      ],
+      "clip": [
+        "21586",
+        0
+      ]
+    },
+    "class_type": "Power Lora Loader (rgthree)",
+    "_meta": {
+      "title": "Power Lora Loader (rgthree)"
+    }
+  },
+  "21584:20669:19087": {
+    "inputs": {
+      "unet_name": "realDream_klein9BV1.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "21584:20669:19073": {
+    "inputs": {
+      "quality": 100,
+      "passes": 1,
+      "grain_strength": 8,
+      "vignette_strength": 1,
+      "color_grade": "Faded",
+      "color_grade_strength": 5,
+      "saturation": 49,
+      "blur_type": "None",
+      "blur_strength": 0,
+      "images": [
+        "21584:20669:19074",
+        0
+      ]
+    },
+    "class_type": "Vintage Effect",
+    "_meta": {
+      "title": "Vintage Effect"
+    }
+  },
+  "21584:19071": {
+    "inputs": {
+      "text": "replace head, back view, hidden face. after remove all tattoos of body, remove tattoos"
+    },
+    "class_type": "Text Multiline",
+    "_meta": {
+      "title": "Text Multiline"
+    }
+  },
+  "21584:21601": {
+    "inputs": {
+      "code": "import numpy as np\nimport cv2\n\n# Obtener la máscara de entrada\n# Cambia \"mask\" si tu input tiene otro nombre\nmask_np = np.array(arg0)\n\n# Quitar dimensiones innecesarias\nmask_np = np.squeeze(mask_np)\n\n# Convertir a binario\nbinary = (mask_np > 0.5).astype(np.uint8)\n\n# Contar componentes conectados (islas)\nnum_labels, labels = cv2.connectedComponents(binary)\n\n# Restar 1 porque el fondo cuenta como componente\nislands = num_labels - 1\n\nprint(\"Islas detectadas:\", islands)\n\n# IMPORTANTE:\n# El nodo Execute Python necesita una variable llamada result\nresult = islands",
+      "n_outputs": 1,
+      "arg0": [
+        "21584:19082",
+        0
+      ]
+    },
+    "class_type": "ExecutePython2e5ddcb5ab72721388af532c0fb85ba87aea1286c736410799ca7d2df8edebb7",
+    "_meta": {
+      "title": "Execute Python"
+    }
+  }
+}

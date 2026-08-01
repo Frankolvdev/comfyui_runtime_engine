@@ -36,3 +36,5 @@ model_roots = [
 ]
 strict = true
 execution_reserve_gb = 8.0
+warmup_workflow = "warmup-workflow-api.json"
+warmup_timeout_seconds = 600
