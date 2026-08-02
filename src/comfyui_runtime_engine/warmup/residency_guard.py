@@ -70,6 +70,31 @@ class SelectiveResidencyGuard(AbstractContextManager):
             lambda: setattr(comfy.sd, "load_diffusion_model", original_load_diffusion_model)
         )
 
+        original_load_clip = getattr(comfy.sd, "load_clip", None)
+        if callable(original_load_clip):
+            def tagged_load_clip(ckpt_paths, *args, **kwargs):
+                clip = original_load_clip(ckpt_paths, *args, **kwargs)
+                paths = list(ckpt_paths or []) if isinstance(ckpt_paths, (list, tuple)) else [ckpt_paths]
+                resolved = [Path(item).expanduser().resolve() for item in paths if item]
+                resident_sources = [path for path in resolved if self._canonical(path) in self.resident_paths]
+                patcher = getattr(clip, "patcher", None)
+                if patcher is not None and resident_sources:
+                    source_path = resident_sources[0]
+                    setattr(patcher, "_comfy_runtime_source_path", str(source_path))
+                    setattr(patcher, "_comfy_runtime_resident", True)
+                    self.events.append({
+                        "event": "clip_tagged",
+                        "source_path": str(source_path),
+                        "resident": True,
+                        "patcher_type": type(patcher).__name__,
+                    })
+                return clip
+
+            comfy.sd.load_clip = tagged_load_clip
+            self._restorers.append(
+                lambda: setattr(comfy.sd, "load_clip", original_load_clip)
+            )
+
         for patcher_class_name in ("ModelPatcher", "CoreModelPatcher"):
             patcher_class = getattr(model_patcher, patcher_class_name, None)
             if patcher_class is None or not hasattr(patcher_class, "clone"):
