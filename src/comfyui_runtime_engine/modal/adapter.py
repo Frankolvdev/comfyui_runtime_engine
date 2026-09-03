@@ -72,6 +72,10 @@ class ModalSnapshotAdapter:
         env["COMFY_RUNTIME_MODAL"] = "1"
         env["COMFY_RUNTIME_MODAL_HOST"] = self.host
         env["COMFY_RUNTIME_MODAL_PORT"] = str(self.port)
+        # Keep child output observable while it is redirected to the durable
+        # Modal runtime log. This does not change runtime behavior; it only
+        # prevents Python-side buffering from hiding diagnostics for minutes.
+        env.setdefault("PYTHONUNBUFFERED", "1")
 
         self.process = subprocess.Popen(
             command,
@@ -81,10 +85,12 @@ class ModalSnapshotAdapter:
             start_new_session=True,
         )
 
-        state = AtomicJsonFile(self.paths.ready_path).wait(
-            timeout_seconds=self.startup_timeout_seconds,
-            predicate=lambda item: bool(item.get("snapshot_ready")),
+        print(
+            "[comfy-runtime-modal] subprocess_started "
+            f"pid={self.process.pid} log={self.paths.log_path}",
+            flush=True,
         )
+        state = self._wait_snapshot_ready()
         self._assert_process_alive()
         self._wait_http_ready(self.startup_timeout_seconds)
 
@@ -95,6 +101,74 @@ class ModalSnapshotAdapter:
                 + json.dumps(report, ensure_ascii=False)
             )
         return report
+
+
+    def _wait_snapshot_ready(self, *, poll_seconds: float = 0.25) -> dict[str, Any]:
+        """Wait for snapshot readiness while surfacing child diagnostics.
+
+        The runtime subprocess intentionally keeps its canonical log file.
+        During Modal snapshot creation we mirror newly appended lines to the
+        parent stdout and also fail immediately if the child exits. This is
+        observability-only: readiness semantics and the subprocess command are
+        unchanged.
+        """
+        deadline = time.monotonic() + self.startup_timeout_seconds
+        ready_file = AtomicJsonFile(self.paths.ready_path)
+        last: dict[str, Any] = {}
+        log_offset = 0
+
+        while time.monotonic() < deadline:
+            log_offset = self._relay_log_output(log_offset)
+
+            if self.process is None:
+                raise RuntimeError("Modal runtime process has not been started.")
+            return_code = self.process.poll()
+            if return_code is not None:
+                self._relay_log_output(log_offset)
+                raise RuntimeError(
+                    f"Modal runtime process exited with code {return_code} "
+                    "before snapshot readiness. "
+                    f"Log tail:\n{self._read_log_tail()}"
+                )
+
+            try:
+                last = ready_file.read()
+            except (OSError, json.JSONDecodeError):
+                last = {}
+            if bool(last.get("snapshot_ready")):
+                self._relay_log_output(log_offset)
+                return last
+            time.sleep(poll_seconds)
+
+        self._relay_log_output(log_offset)
+        raise TimeoutError(
+            f"Timed out waiting for Modal runtime state at {self.paths.ready_path}. "
+            f"Last state: {last}. Log tail:\n{self._read_log_tail()}"
+        )
+
+    def _relay_log_output(self, offset: int) -> int:
+        """Mirror only newly appended runtime log content to parent stdout."""
+        try:
+            with self.paths.log_path.open("r", encoding="utf-8", errors="replace") as handle:
+                handle.seek(max(0, int(offset)))
+                chunk = handle.read()
+                new_offset = handle.tell()
+        except OSError:
+            return offset
+
+        if chunk:
+            for line in chunk.splitlines():
+                print(f"[comfy-runtime-modal] {line}", flush=True)
+        return new_offset
+
+    def _read_log_tail(self, *, max_chars: int = 12000) -> str:
+        try:
+            text = self.paths.log_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            return f"<runtime log unavailable: {exc}>"
+        if len(text) <= max_chars:
+            return text or "<runtime log empty>"
+        return "...<truncated>...\n" + text[-max_chars:]
 
     def after_restore(self) -> dict[str, Any]:
         """Validate child process, HTTP service and resident manifest.
