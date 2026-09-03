@@ -46,22 +46,31 @@ class PersistentModalRuntime:
                 + json.dumps(verification, ensure_ascii=False)
             )
 
-        asset_result = AssetLinkManager(
-            replace_existing=self.config.sam3_replace_existing
-        ).ensure_file_link(
-            name="sam3.pt",
-            source=self.config.sam3_source_model,
-            expected=self.config.sam3_expected_model,
-            mode=self.config.sam3_link_mode,
+        # SAM3 used to be mandatory because the original snapshot profile was
+        # SAM3-centric. Flux-only snapshots must not pay for or require it.
+        sam3_selected = any(
+            str(item).strip().replace("\\", "/").casefold().startswith("sam3/")
+            for item in self.config.resident_models
         )
-        if asset_result.status in {
-            "source_missing",
-            "existing_target_not_replaced",
-        }:
-            raise RuntimeEngineError(
-                "SAM3 asset preparation is not ready: "
-                + json.dumps(asset_result.to_dict(), ensure_ascii=False)
+        asset_links: dict[str, Any] = {}
+        if sam3_selected:
+            asset_result = AssetLinkManager(
+                replace_existing=self.config.sam3_replace_existing
+            ).ensure_file_link(
+                name="sam3.pt",
+                source=self.config.sam3_source_model,
+                expected=self.config.sam3_expected_model,
+                mode=self.config.sam3_link_mode,
             )
+            if asset_result.status in {
+                "source_missing",
+                "existing_target_not_replaced",
+            }:
+                raise RuntimeEngineError(
+                    "SAM3 asset preparation is not ready: "
+                    + json.dumps(asset_result.to_dict(), ensure_ascii=False)
+                )
+            asset_links["sam3"] = asset_result.to_dict()
 
         resident_plan = self.engine.residency_plan()
         resident_paths = tuple(
@@ -92,7 +101,7 @@ class PersistentModalRuntime:
             timeout_seconds=self.config.warmup_timeout_seconds,
             hold_seconds=0,
             iterations=1,
-            asset_links={"sam3": asset_result.to_dict()},
+            asset_links=asset_links,
             snapshot_lifecycle=lifecycle,
             snapshot_audit=None,
             persist_after_ready=True,

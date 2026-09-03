@@ -124,10 +124,14 @@ class SelectiveResidencyGuard(AbstractContextManager):
         def guarded_free_memory(
             memory_required,
             device,
-            keep_loaded=[],
+            keep_loaded=None,
             for_dynamic=False,
-            ram_required=0,
+            **kwargs,
         ):
+            # ComfyUI 0.31 added pins_required and may add more memory-budget
+            # parameters later. Forward them untouched instead of coupling the
+            # engine to one exact free_memory() signature.
+            keep_loaded = list(keep_loaded or [])
             protected = self.protected_loaded_models(model_management)
             merged = list(keep_loaded)
             for loaded in protected:
@@ -151,7 +155,7 @@ class SelectiveResidencyGuard(AbstractContextManager):
                 device,
                 keep_loaded=merged,
                 for_dynamic=for_dynamic,
-                ram_required=ram_required,
+                **kwargs,
             )
 
         model_management.free_memory = guarded_free_memory
