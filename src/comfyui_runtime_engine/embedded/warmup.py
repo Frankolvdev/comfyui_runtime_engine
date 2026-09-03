@@ -116,6 +116,16 @@ class EmbeddedWarmupRunner:
                 while time.monotonic() < deadline:
                     loop.run_until_complete(asyncio.sleep(0.05))
 
+            # Snapshot residents must be physically resident on CUDA, not merely
+            # staged by ComfyUI's dynamic-VRAM loader. The warmup workflow can
+            # legitimately leave large Flux/CLIP patchers partially loaded even
+            # though they were exercised. Before validating snapshot readiness,
+            # explicitly promote ONLY the configured/tagged residents to a full
+            # CUDA load. This preserves normal ComfyUI memory management for every
+            # non-resident model.
+            self._force_residents_fully_loaded(model_management, guard)
+            torch.cuda.synchronize()
+
             residency_guard = guard.report()
             snapshot_state = None
             if snapshot_lifecycle is not None:
@@ -205,6 +215,21 @@ class EmbeddedWarmupRunner:
                     asyncio.gather(server_task, return_exceptions=True)
                 )
             self.bootstrap.close()
+
+    @staticmethod
+    def _force_residents_fully_loaded(model_management, guard) -> None:
+        protected = list(guard.protected_loaded_models(model_management))
+        patchers = []
+        for loaded in protected:
+            patcher = getattr(loaded, "model", None)
+            if patcher is not None and patcher not in patchers:
+                patchers.append(patcher)
+        if not patchers:
+            return
+        model_management.load_models_gpu(
+            patchers,
+            force_full_load=True,
+        )
 
     def _wait_for_server(self, loop, task, timeout: float) -> None:
         deadline = time.monotonic() + timeout
