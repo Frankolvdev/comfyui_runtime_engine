@@ -78,11 +78,19 @@ class PersistentModalRuntime:
             for item in resident_plan["resolutions"]
             if item["resolved"]
         )
-        gpu_args = tuple(
+        gpu_args_list = [
             argument
             for argument in self.config.embedded_extra_args
             if argument != "--cpu"
-        )
+        ]
+        # The normal TRYON Modal runtime disables DynamicVRAM because it caused
+        # severe loading stalls. The embedded snapshot bootstrap must use the same
+        # memory policy. Without this flag ComfyUI 0.31 leaves Flux2/CLIP as
+        # dynamic-VRAM "Staged" models, so a GPU snapshot can never satisfy the
+        # full-residency contract even after a force_full_load promotion.
+        if "--disable-dynamic-vram" not in gpu_args_list:
+            gpu_args_list.append("--disable-dynamic-vram")
+        gpu_args = tuple(gpu_args_list)
         lifecycle = SnapshotLifecycle(
             self.config.snapshot_state_path,
             provider="modal",

@@ -225,11 +225,31 @@ class EmbeddedWarmupRunner:
             if patcher is not None and patcher not in patchers:
                 patchers.append(patcher)
         if not patchers:
-            return
+            raise RuntimeEngineError(
+                "Snapshot residents were configured but no tagged ComfyUI LoadedModel "
+                "objects were found after warmup."
+            )
         model_management.load_models_gpu(
             patchers,
             force_full_load=True,
         )
+        incomplete = []
+        for loaded in guard.protected_loaded_models(model_management):
+            loaded_bytes = int(loaded.model_loaded_memory())
+            total_bytes = int(loaded.model_memory())
+            device = str(getattr(loaded, "device", ""))
+            if total_bytes <= 0 or loaded_bytes < total_bytes or not device.startswith("cuda"):
+                incomplete.append({
+                    "source_path": getattr(loaded.model, "_comfy_runtime_source_path", None),
+                    "device": device,
+                    "loaded_bytes": loaded_bytes,
+                    "total_model_bytes": total_bytes,
+                })
+        if incomplete:
+            raise RuntimeEngineError(
+                "Configured snapshot resident models are still not fully loaded on CUDA: "
+                + json.dumps(incomplete, ensure_ascii=False)
+            )
 
     def _wait_for_server(self, loop, task, timeout: float) -> None:
         deadline = time.monotonic() + timeout
