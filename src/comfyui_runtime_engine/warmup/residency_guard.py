@@ -14,9 +14,11 @@ class SelectiveResidencyGuard(AbstractContextManager):
     """
 
     def __init__(self, resident_paths: tuple[Path, ...]) -> None:
-        self.resident_paths = {
-            self._canonical(path) for path in resident_paths
+        self._resident_path_map = {
+            self._canonical(path): Path(path).expanduser().resolve()
+            for path in resident_paths
         }
+        self.resident_paths = set(self._resident_path_map)
         self.events: list[dict[str, Any]] = []
         self._restorers: list[Callable[[], None]] = []
         self._installed = False
@@ -221,17 +223,38 @@ class SelectiveResidencyGuard(AbstractContextManager):
                     source_path = folder_paths.get_full_path("controlnet", filename)
                 except Exception:
                     source_path = None
-                if source_path and guard._canonical(source_path) in guard.resident_paths:
-                    canonical = guard._canonical(source_path)
+
+                matched_resident = guard._match_controlnet_resident(
+                    filename=filename,
+                    resolved_source=source_path,
+                )
+                if matched_resident is not None:
+                    canonical = guard._canonical(matched_resident)
                     guard._external_residents[canonical] = {
-                        "source_path": str(Path(source_path).expanduser().resolve()),
+                        # Always report the configured resident path, not the loader's
+                        # alias (/models vs /__modal/volumes). This keeps snapshot
+                        # identity stable across Modal mount aliases.
+                        "source_path": str(Path(matched_resident).expanduser().resolve()),
+                        "loader_source_path": (
+                            str(Path(source_path).expanduser().resolve())
+                            if source_path else None
+                        ),
                         "object": result,
                         "loader": "JLCFlux2ControlNetLoader",
                     }
                     guard.events.append({
                         "event": "external_resident_captured",
-                        "source_path": str(Path(source_path).expanduser().resolve()),
+                        "source_path": str(Path(matched_resident).expanduser().resolve()),
+                        "loader_source_path": (
+                            str(Path(source_path).expanduser().resolve())
+                            if source_path else None
+                        ),
                         "loader": "JLCFlux2ControlNetLoader",
+                        "match_mode": (
+                            "absolute"
+                            if source_path and guard._canonical(source_path) == canonical
+                            else "controlnet_relative_alias"
+                        ),
                     })
             return result
 
@@ -241,6 +264,46 @@ class SelectiveResidencyGuard(AbstractContextManager):
             lambda cls=loader_class, name=function_name, method=original:
             setattr(cls, name, method)
         )
+
+    def _match_controlnet_resident(
+        self,
+        *,
+        filename: str,
+        resolved_source: str | Path | None,
+    ) -> Path | None:
+        """Match one configured ControlNet across provider mount aliases.
+
+        Modal exposes the same model volume through more than one absolute path
+        (for example /models/controlnet/... and /__modal/volumes/.../controlnet/...).
+        Absolute canonical matching remains preferred. The fallback is deliberately
+        narrow: exact filename plus a configured parent directory named controlnet
+        or controlnets, and it only succeeds when exactly one resident matches.
+        """
+        if resolved_source is not None:
+            canonical_source = self._canonical(resolved_source)
+            if canonical_source in self.resident_paths:
+                return self._resident_path_map[canonical_source]
+
+        requested_name = Path(str(filename)).name.casefold()
+        candidates: list[Path] = []
+        for path in self._resident_path_map.values():
+            if path.name.casefold() != requested_name:
+                continue
+            if path.parent.name.casefold() not in {"controlnet", "controlnets"}:
+                continue
+            candidates.append(path)
+
+        if len(candidates) == 1:
+            return candidates[0]
+
+        self.events.append({
+            "event": "external_resident_match_failed",
+            "filename": str(filename),
+            "resolved_source": str(resolved_source) if resolved_source else None,
+            "candidate_count": len(candidates),
+            "candidates": [str(path) for path in candidates],
+        })
+        return None
 
     @staticmethod
     def _external_tensor_state(root: Any) -> dict[str, Any]:
