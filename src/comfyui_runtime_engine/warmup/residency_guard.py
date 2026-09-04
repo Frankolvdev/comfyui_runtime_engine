@@ -176,27 +176,87 @@ class SelectiveResidencyGuard(AbstractContextManager):
 
 
     def _install_external_loader_hooks(self) -> None:
-        """Capture configured custom-loader objects that live outside LoadedModel.
+        """Capture configured JLC ControlNet objects outside LoadedModel.
 
-        JLCFlux2ControlNetLoader intentionally returns a lazy side-model and only
-        materializes it later when sampling discovers the base model. Retaining the
-        returned object is enough to keep that materialized state reachable for the
-        provider snapshot, while the normal five residents remain governed by
-        ComfyUI's CUDA LoadedModel machinery.
+        Patch the loader module's underlying load_jlc_flux2_controlnet() function
+        rather than relying only on ComfyUI invoking one specific class method.
+        ComfyUI may wrap/cache node classes internally, while the loader method
+        itself still resolves its module-global load_jlc_flux2_controlnet symbol.
+        This makes the hook robust across node-registry execution paths.
         """
         try:
             import folder_paths
             import nodes
-        except Exception:
+            import sys
+        except Exception as exc:
+            self.events.append({
+                "event": "external_resident_hook_unavailable",
+                "reason": "imports_failed",
+                "error": repr(exc),
+            })
             return
 
         mappings = getattr(nodes, "NODE_CLASS_MAPPINGS", {}) or {}
         loader_class = mappings.get("JLCFlux2ControlNetLoader")
         if loader_class is None:
+            self.events.append({
+                "event": "external_resident_hook_unavailable",
+                "reason": "loader_class_missing",
+                "mapping_count": len(mappings),
+            })
             return
+
+        guard = self
+        module_name = getattr(loader_class, "__module__", "")
+        loader_module = sys.modules.get(module_name)
+        underlying = getattr(loader_module, "load_jlc_flux2_controlnet", None) if loader_module else None
+
+        if callable(underlying) and not getattr(underlying, "_comfy_runtime_external_resident_hook", False):
+            def wrapped_underlying(checkpoint_path, *args, **kwargs):
+                result = underlying(checkpoint_path, *args, **kwargs)
+                checkpoint_name = kwargs.get("checkpoint_name")
+                filename = checkpoint_name or Path(str(checkpoint_path)).name
+                matched_resident = guard._match_controlnet_resident(
+                    filename=str(filename),
+                    resolved_source=checkpoint_path,
+                )
+                if matched_resident is not None:
+                    guard._capture_external_resident(
+                        matched_resident=matched_resident,
+                        loader_source=checkpoint_path,
+                        result=result,
+                        loader="JLCFlux2ControlNetLoader",
+                        hook="load_jlc_flux2_controlnet",
+                    )
+                return result
+
+            setattr(wrapped_underlying, "_comfy_runtime_external_resident_hook", True)
+            setattr(loader_module, "load_jlc_flux2_controlnet", wrapped_underlying)
+            self._restorers.append(
+                lambda module=loader_module, original=underlying:
+                setattr(module, "load_jlc_flux2_controlnet", original)
+            )
+            self.events.append({
+                "event": "external_resident_hook_installed",
+                "loader": "JLCFlux2ControlNetLoader",
+                "hook": "load_jlc_flux2_controlnet",
+                "module": module_name,
+            })
+            return
+
+        # Compatibility fallback for loader versions where the implementation
+        # function is not exposed as a module global.
         function_name = getattr(loader_class, "FUNCTION", None)
         if not function_name or not hasattr(loader_class, function_name):
+            self.events.append({
+                "event": "external_resident_hook_unavailable",
+                "reason": "no_callable_hook_target",
+                "loader": "JLCFlux2ControlNetLoader",
+                "module": module_name,
+                "function_name": function_name,
+            })
             return
+
         original = getattr(loader_class, function_name)
         if getattr(original, "_comfy_runtime_external_resident_hook", False):
             return
@@ -209,9 +269,7 @@ class SelectiveResidencyGuard(AbstractContextManager):
         except Exception:
             argument_names = []
 
-        guard = self
-
-        def wrapped(instance, *args, **kwargs):
+        def wrapped_method(instance, *args, **kwargs):
             result = original(instance, *args, **kwargs)
             values = dict(kwargs)
             for index, value in enumerate(args):
@@ -223,47 +281,69 @@ class SelectiveResidencyGuard(AbstractContextManager):
                     source_path = folder_paths.get_full_path("controlnet", filename)
                 except Exception:
                     source_path = None
-
                 matched_resident = guard._match_controlnet_resident(
                     filename=filename,
                     resolved_source=source_path,
                 )
                 if matched_resident is not None:
-                    canonical = guard._canonical(matched_resident)
-                    guard._external_residents[canonical] = {
-                        # Always report the configured resident path, not the loader's
-                        # alias (/models vs /__modal/volumes). This keeps snapshot
-                        # identity stable across Modal mount aliases.
-                        "source_path": str(Path(matched_resident).expanduser().resolve()),
-                        "loader_source_path": (
-                            str(Path(source_path).expanduser().resolve())
-                            if source_path else None
-                        ),
-                        "object": result,
-                        "loader": "JLCFlux2ControlNetLoader",
-                    }
-                    guard.events.append({
-                        "event": "external_resident_captured",
-                        "source_path": str(Path(matched_resident).expanduser().resolve()),
-                        "loader_source_path": (
-                            str(Path(source_path).expanduser().resolve())
-                            if source_path else None
-                        ),
-                        "loader": "JLCFlux2ControlNetLoader",
-                        "match_mode": (
-                            "absolute"
-                            if source_path and guard._canonical(source_path) == canonical
-                            else "controlnet_relative_alias"
-                        ),
-                    })
+                    guard._capture_external_resident(
+                        matched_resident=matched_resident,
+                        loader_source=source_path,
+                        result=result,
+                        loader="JLCFlux2ControlNetLoader",
+                        hook="node_method",
+                    )
             return result
 
-        setattr(wrapped, "_comfy_runtime_external_resident_hook", True)
-        setattr(loader_class, function_name, wrapped)
+        setattr(wrapped_method, "_comfy_runtime_external_resident_hook", True)
+        setattr(loader_class, function_name, wrapped_method)
         self._restorers.append(
             lambda cls=loader_class, name=function_name, method=original:
             setattr(cls, name, method)
         )
+        self.events.append({
+            "event": "external_resident_hook_installed",
+            "loader": "JLCFlux2ControlNetLoader",
+            "hook": "node_method",
+            "module": module_name,
+            "function_name": function_name,
+        })
+
+    def _capture_external_resident(
+        self,
+        *,
+        matched_resident: Path,
+        loader_source: str | Path | None,
+        result: Any,
+        loader: str,
+        hook: str,
+    ) -> None:
+        canonical = self._canonical(matched_resident)
+        configured_path = str(Path(matched_resident).expanduser().resolve())
+        loader_source_path = (
+            str(Path(loader_source).expanduser().resolve())
+            if loader_source is not None else None
+        )
+        self._external_residents[canonical] = {
+            "source_path": configured_path,
+            "loader_source_path": loader_source_path,
+            "object": result,
+            "loader": loader,
+            "hook": hook,
+        }
+        self.events.append({
+            "event": "external_resident_captured",
+            "source_path": configured_path,
+            "loader_source_path": loader_source_path,
+            "loader": loader,
+            "hook": hook,
+            "match_mode": (
+                "absolute"
+                if loader_source is not None
+                and self._canonical(loader_source) == canonical
+                else "controlnet_relative_alias"
+            ),
+        })
 
     def _match_controlnet_resident(
         self,
