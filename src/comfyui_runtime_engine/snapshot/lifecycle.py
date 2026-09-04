@@ -37,7 +37,7 @@ class SnapshotLifecycle:
         )
         if not manifest["snapshot_ready"]:
             raise RuntimeError(
-                "Snapshot blocked: not every configured resident model is fully loaded on CUDA."
+                "Snapshot blocked: not every configured resident is snapshot-ready (CUDA LoadedModel or retained materialized snapshot object)."
             )
         self.store.write(manifest)
         if provider_callback is not None:

@@ -20,6 +20,12 @@ class SelectiveResidencyGuard(AbstractContextManager):
         self.events: list[dict[str, Any]] = []
         self._restorers: list[Callable[[], None]] = []
         self._installed = False
+        # Some custom loaders (notably JLC Flux2 ControlNet) do not register
+        # their materialized side-model in comfy.model_management.current_loaded_models.
+        # Keep their returned object graph alive explicitly so Modal can snapshot the
+        # already-materialized Python/torch state without weakening the CUDA contract
+        # used by normal ComfyUI LoadedModel residents.
+        self._external_residents: dict[str, dict[str, Any]] = {}
 
     def __enter__(self) -> "SelectiveResidencyGuard":
         self.install()
@@ -163,7 +169,156 @@ class SelectiveResidencyGuard(AbstractContextManager):
             lambda: setattr(model_management, "free_memory", original_free_memory)
         )
 
+        self._install_external_loader_hooks()
         self._installed = True
+
+
+    def _install_external_loader_hooks(self) -> None:
+        """Capture configured custom-loader objects that live outside LoadedModel.
+
+        JLCFlux2ControlNetLoader intentionally returns a lazy side-model and only
+        materializes it later when sampling discovers the base model. Retaining the
+        returned object is enough to keep that materialized state reachable for the
+        provider snapshot, while the normal five residents remain governed by
+        ComfyUI's CUDA LoadedModel machinery.
+        """
+        try:
+            import folder_paths
+            import nodes
+        except Exception:
+            return
+
+        mappings = getattr(nodes, "NODE_CLASS_MAPPINGS", {}) or {}
+        loader_class = mappings.get("JLCFlux2ControlNetLoader")
+        if loader_class is None:
+            return
+        function_name = getattr(loader_class, "FUNCTION", None)
+        if not function_name or not hasattr(loader_class, function_name):
+            return
+        original = getattr(loader_class, function_name)
+        if getattr(original, "_comfy_runtime_external_resident_hook", False):
+            return
+
+        try:
+            input_types = loader_class.INPUT_TYPES()
+            required_names = list((input_types or {}).get("required", {}).keys())
+            optional_names = list((input_types or {}).get("optional", {}).keys())
+            argument_names = required_names + optional_names
+        except Exception:
+            argument_names = []
+
+        guard = self
+
+        def wrapped(instance, *args, **kwargs):
+            result = original(instance, *args, **kwargs)
+            values = dict(kwargs)
+            for index, value in enumerate(args):
+                if index < len(argument_names):
+                    values.setdefault(argument_names[index], value)
+            filename = values.get("controlnet_name")
+            if filename:
+                try:
+                    source_path = folder_paths.get_full_path("controlnet", filename)
+                except Exception:
+                    source_path = None
+                if source_path and guard._canonical(source_path) in guard.resident_paths:
+                    canonical = guard._canonical(source_path)
+                    guard._external_residents[canonical] = {
+                        "source_path": str(Path(source_path).expanduser().resolve()),
+                        "object": result,
+                        "loader": "JLCFlux2ControlNetLoader",
+                    }
+                    guard.events.append({
+                        "event": "external_resident_captured",
+                        "source_path": str(Path(source_path).expanduser().resolve()),
+                        "loader": "JLCFlux2ControlNetLoader",
+                    })
+            return result
+
+        setattr(wrapped, "_comfy_runtime_external_resident_hook", True)
+        setattr(loader_class, function_name, wrapped)
+        self._restorers.append(
+            lambda cls=loader_class, name=function_name, method=original:
+            setattr(cls, name, method)
+        )
+
+    @staticmethod
+    def _external_tensor_state(root: Any) -> dict[str, Any]:
+        """Summarize reachable torch tensors without copying/moving them."""
+        try:
+            import torch
+        except Exception:
+            return {"tensor_bytes": 0, "devices": [], "tensor_count": 0}
+
+        queue = [root]
+        seen_objects: set[int] = set()
+        seen_tensors: set[int] = set()
+        tensor_bytes = 0
+        devices: set[str] = set()
+        tensor_count = 0
+        max_objects = 20000
+
+        while queue and len(seen_objects) < max_objects:
+            obj = queue.pop()
+            obj_id = id(obj)
+            if obj_id in seen_objects:
+                continue
+            seen_objects.add(obj_id)
+
+            if isinstance(obj, torch.Tensor):
+                if obj_id not in seen_tensors:
+                    seen_tensors.add(obj_id)
+                    tensor_count += 1
+                    try:
+                        tensor_bytes += int(obj.numel()) * int(obj.element_size())
+                    except Exception:
+                        pass
+                    devices.add(str(obj.device))
+                continue
+            if isinstance(obj, dict):
+                queue.extend(obj.values())
+                continue
+            if isinstance(obj, (list, tuple, set)):
+                queue.extend(obj)
+                continue
+            if isinstance(obj, (str, bytes, bytearray, int, float, bool, type(None))):
+                continue
+
+            values = getattr(obj, "__dict__", None)
+            if isinstance(values, dict):
+                queue.extend(values.values())
+
+        return {
+            "tensor_bytes": tensor_bytes,
+            "devices": sorted(devices),
+            "tensor_count": tensor_count,
+        }
+
+    def external_resident_models(self) -> list[dict[str, Any]]:
+        residents: list[dict[str, Any]] = []
+        for item in self._external_residents.values():
+            source_path = str(item["source_path"])
+            state = self._external_tensor_state(item.get("object"))
+            tensor_bytes = int(state.get("tensor_bytes") or 0)
+            if tensor_bytes <= 0:
+                self.events.append({
+                    "event": "external_resident_not_materialized",
+                    "source_path": source_path,
+                    "loader": item.get("loader"),
+                })
+                continue
+            residents.append({
+                "source_path": source_path,
+                "model_type": item.get("loader") or "external_loader",
+                "device": "snapshot-object",
+                "currently_used": True,
+                "loaded_bytes": tensor_bytes,
+                "total_model_bytes": tensor_bytes,
+                "residency_mode": "snapshot_object",
+                "tensor_devices": state.get("devices", []),
+                "tensor_count": int(state.get("tensor_count") or 0),
+            })
+        return residents
 
     def restore(self) -> None:
         for restore in reversed(self._restorers):
@@ -191,10 +346,8 @@ class SelectiveResidencyGuard(AbstractContextManager):
         import comfy.model_management as model_management
 
         protected = self.protected_loaded_models(model_management)
-        return {
-            "configured_resident_paths": sorted(self.resident_paths),
-            "protected_loaded_count": len(protected),
-            "protected_loaded_models": [
+        external = self.external_resident_models()
+        normal = [
                 {
                     "source_path": getattr(
                         loaded.model, "_comfy_runtime_source_path", None
@@ -208,6 +361,14 @@ class SelectiveResidencyGuard(AbstractContextManager):
                     "total_model_bytes": int(loaded.model_memory()),
                 }
                 for loaded in protected
-            ],
+            ]
+        combined = normal + external
+        return {
+            "configured_resident_paths": sorted(self.resident_paths),
+            "protected_loaded_count": len(combined),
+            "protected_loaded_models": combined,
+            "loadedmodel_resident_count": len(normal),
+            "external_resident_count": len(external),
+            "external_resident_models": external,
             "guard_events": list(self.events),
         }

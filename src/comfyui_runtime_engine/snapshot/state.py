@@ -16,6 +16,7 @@ class ResidentState:
     device: str
     fully_loaded: bool
     identity: str
+    residency_mode: str = "cuda_loaded_model"
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -45,6 +46,7 @@ class SnapshotStateStore:
             source = str(item.get("source_path") or "")
             loaded = int(item.get("loaded_bytes") or 0)
             total = int(item.get("total_model_bytes") or 0)
+            mode = str(item.get("residency_mode") or "cuda_loaded_model")
             normalized.append(
                 ResidentState(
                     source_path=source,
@@ -53,6 +55,7 @@ class SnapshotStateStore:
                     device=str(item.get("device") or ""),
                     fully_loaded=bool(total > 0 and loaded >= total),
                     identity=self.model_identity(source, total),
+                    residency_mode=mode,
                 )
             )
         return {
@@ -66,7 +69,12 @@ class SnapshotStateStore:
             "residents": [item.to_dict() for item in normalized],
             "vram": vram,
             "snapshot_ready": bool(normalized) and all(
-                item.fully_loaded and item.device.startswith("cuda")
+                item.fully_loaded
+                and (
+                    item.device.startswith("cuda")
+                    if item.residency_mode == "cuda_loaded_model"
+                    else item.residency_mode == "snapshot_object"
+                )
                 for item in normalized
             ),
         }
